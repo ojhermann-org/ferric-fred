@@ -42,6 +42,7 @@
             rustToolchain
             pkgs.cargo-nextest
             pkgs.cargo-deny
+            pkgs.bacon # background `cargo check`/clippy/test runner
             pkgs.infisical # CLI: inject secret values (e.g. FRED_API_KEY) via direnv
           ];
 
