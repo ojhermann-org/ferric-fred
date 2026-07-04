@@ -11,7 +11,7 @@ mod chart;
 use anyhow::{Context, Result};
 use chrono::NaiveDate;
 use clap::{Args, Parser, Subcommand};
-use ferric_fred::{CategoryId, Client, ObservationsRequest, ReleaseId, SeriesId};
+use ferric_fred::{CategoryId, Client, ObservationsRequest, ReleaseId, SeriesId, SourceId};
 
 use args::{AggregationArg, FrequencyArg, OrderByArg, SortOrderArg, UnitsArg};
 
@@ -102,6 +102,23 @@ enum Command {
         /// With `--series`: field to order series by.
         #[arg(long)]
         order_by: Option<OrderByArg>,
+        /// Sort order.
+        #[arg(long)]
+        sort: Option<SortOrderArg>,
+    },
+    /// List FRED data sources, show one, or list a source's releases.
+    ///
+    /// With no id, lists all sources. With an id, shows that source; add
+    /// `--releases` to list the releases it produces.
+    Source {
+        /// Source id. Omit to list all sources.
+        id: Option<u32>,
+        /// With an id: list the source's releases instead of its metadata.
+        #[arg(long, requires = "id")]
+        releases: bool,
+        /// Maximum number of results (applies to the list and to `--releases`).
+        #[arg(long)]
+        limit: Option<u32>,
         /// Sort order.
         #[arg(long)]
         sort: Option<SortOrderArg>,
@@ -199,6 +216,12 @@ async fn main() -> Result<()> {
             order_by,
             sort,
         } => release(&client, id, series, limit, order_by, sort, json).await,
+        Command::Source {
+            id,
+            releases,
+            limit,
+            sort,
+        } => source(&client, id, releases, limit, sort, json).await,
         Command::Tags { names, options } => tags(&client, names, &options, json).await,
     }
 }
@@ -435,6 +458,81 @@ async fn release(
     println!("  press release: {}", release.press_release);
     if let Some(link) = &release.link {
         println!("  link:          {link}");
+    }
+    Ok(())
+}
+
+async fn source(
+    client: &Client,
+    id: Option<u32>,
+    releases: bool,
+    limit: Option<u32>,
+    sort: Option<SortOrderArg>,
+    json: bool,
+) -> Result<()> {
+    // clap guarantees `--releases` is only set alongside an id, so here (no id)
+    // just list all sources.
+    let Some(id) = id else {
+        let mut request = client.sources();
+        if let Some(limit) = limit {
+            request = request.limit(limit);
+        }
+        if let Some(sort) = sort {
+            request = request.sort_order(sort.into());
+        }
+
+        let results = request.send().await.context("listing sources failed")?;
+
+        if json {
+            return print_json(&results);
+        }
+
+        println!("{} sources:", results.count);
+        for source in &results.sources {
+            println!("{}\t{}", source.id, source.name);
+        }
+        return Ok(());
+    };
+
+    let source_id = SourceId::new(id);
+
+    if releases {
+        let mut request = client.source_releases(source_id);
+        if let Some(limit) = limit {
+            request = request.limit(limit);
+        }
+        if let Some(sort) = sort {
+            request = request.sort_order(sort.into());
+        }
+
+        let results = request
+            .send()
+            .await
+            .with_context(|| format!("fetching releases for source {id} failed"))?;
+
+        if json {
+            return print_json(&results);
+        }
+
+        println!("{} releases from source {id}:", results.count);
+        for release in &results.releases {
+            println!("{}\t{}", release.id, release.name);
+        }
+        return Ok(());
+    }
+
+    let source = client
+        .source(source_id)
+        .await
+        .with_context(|| format!("fetching source {id} failed"))?;
+
+    if json {
+        return print_json(&source);
+    }
+
+    println!("{}: {}", source.id, source.name);
+    if let Some(link) = &source.link {
+        println!("  link: {link}");
     }
     Ok(())
 }

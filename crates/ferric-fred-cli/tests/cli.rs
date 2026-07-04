@@ -30,7 +30,19 @@ fn help_lists_every_subcommand() {
         .stdout(predicate::str::contains("chart"))
         .stdout(predicate::str::contains("category"))
         .stdout(predicate::str::contains("release"))
+        .stdout(predicate::str::contains("source"))
         .stdout(predicate::str::contains("tags"));
+}
+
+#[test]
+fn source_releases_without_id_is_an_error() {
+    // --releases requires a source id (clap `requires`); caught at parse time.
+    fred()
+        .args(["source", "--releases"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("required arguments"))
+        .stderr(predicate::str::contains("<ID>"));
 }
 
 #[test]
@@ -200,6 +212,30 @@ fn release_list_and_single_and_series() {
         .assert()
         .success()
         .stdout(predicate::str::contains("series in release 53"));
+}
+
+#[test]
+#[ignore = "hits the live FRED API; requires FRED_API_KEY"]
+fn source_list_and_single_and_releases() {
+    let fred = || Command::cargo_bin("fred").unwrap();
+
+    fred()
+        .args(["source", "--limit", "3"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("sources:"));
+
+    fred()
+        .args(["source", "18"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("18:"));
+
+    fred()
+        .args(["source", "18", "--releases", "--limit", "1"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("releases from source 18"));
 }
 
 #[test]

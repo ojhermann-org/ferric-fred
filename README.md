@@ -25,12 +25,13 @@ are managed on top of that (see the ADRs).
 
 Early construction. The library covers the `series`, `series/observations`,
 `series/search`, `category` (`category`, `category/children`,
-`category/series`), `release` (`releases`, `release`, `release/series`), and
-`tag` (`tags`, `related_tags`, `tags/series`, `series/tags`) endpoints; the
-`fred` CLI (this repo's first consumer) can search, show series metadata, print
-observations, chart them in an interactive terminal UI, browse the category tree
-and releases, and filter series by tags (with related-tag discovery). The
-`fred-mcp` server (ADR-0010) speaks MCP over stdio with the corresponding tools.
+`category/series`), `release` (`releases`, `release`, `release/series`), `source`
+(`sources`, `source`, `source/releases`), and `tag` (`tags`, `related_tags`,
+`tags/series`, `series/tags`) endpoints; the `fred` CLI (this repo's first
+consumer) can search, show series metadata, print observations, chart them in an
+interactive terminal UI, browse the category tree, releases, and sources, and
+filter series by tags (with related-tag discovery). The `fred-mcp` server
+(ADR-0010) speaks MCP over stdio with the corresponding tools.
 
 ## Using the CLI
 
@@ -48,6 +49,9 @@ fred category 125 --series --limit 5                            # series in a ca
 fred release                                                     # list all data releases
 fred release 53                                                  # a release's metadata
 fred release 53 --series --limit 5                              # series in a release
+fred source                                                     # list all data sources
+fred source 18                                                  # a source's metadata
+fred source 18 --releases --limit 5                            # releases produced by a source
 fred tags --search-text quarterly --limit 5                     # browse/search the tag vocabulary
 fred tags gdp quarterly --limit 5                               # series carrying all these tags
 fred tags gdp --related --limit 5                               # tags that co-occur with gdp
