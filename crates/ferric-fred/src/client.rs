@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-use crate::{Error, Observation, Result, SeriesId};
+use crate::{Error, Observation, Result, Series, SeriesId};
 
 /// Base URL for the FRED REST API.
 const FRED_BASE_URL: &str = "https://api.stlouisfed.org/fred";
@@ -59,6 +59,34 @@ impl Client {
         let parsed: ObservationsResponse = serde_json::from_slice(&body)?;
         Ok(parsed.observations)
     }
+
+    /// Fetch metadata for a series (the `fred/series` endpoint).
+    pub async fn series(&self, series_id: &SeriesId) -> Result<Series> {
+        let response = self
+            .http
+            .get(format!("{}/series", self.base_url))
+            .query(&[
+                ("series_id", series_id.as_str()),
+                ("api_key", self.api_key.as_str()),
+                ("file_type", "json"),
+            ])
+            .send()
+            .await?;
+
+        let status = response.status();
+        let body = response.bytes().await?;
+
+        if !status.is_success() {
+            return Err(api_error(status, &body));
+        }
+
+        let parsed: SeriesResponse = serde_json::from_slice(&body)?;
+        parsed.seriess.into_iter().next().ok_or_else(|| Error::Api {
+            status: status.as_u16(),
+            code: None,
+            message: format!("FRED returned no series for id `{series_id}`"),
+        })
+    }
 }
 
 /// Build an [`Error`] from a non-success FRED response, decoding FRED's error
@@ -89,6 +117,13 @@ fn api_error(status: reqwest::StatusCode, body: &[u8]) -> Error {
 #[derive(Deserialize)]
 struct ObservationsResponse {
     observations: Vec<Observation>,
+}
+
+/// The `series` response envelope. FRED pluralizes the array key as `seriess`
+/// (sic); other metadata fields are ignored for this slice.
+#[derive(Deserialize)]
+struct SeriesResponse {
+    seriess: Vec<Series>,
 }
 
 /// FRED's error response body.

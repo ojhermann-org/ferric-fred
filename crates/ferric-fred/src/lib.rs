@@ -21,13 +21,19 @@
 
 mod client;
 mod error;
+mod frequency;
 mod ids;
 mod observation;
+mod seasonal_adjustment;
+mod series;
 
 pub use client::Client;
 pub use error::Error;
+pub use frequency::Frequency;
 pub use ids::SeriesId;
 pub use observation::Observation;
+pub use seasonal_adjustment::SeasonalAdjustment;
+pub use series::Series;
 
 /// A `Result` whose error type is this crate's [`Error`].
 pub type Result<T> = std::result::Result<T, Error>;
