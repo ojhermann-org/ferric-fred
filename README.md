@@ -23,11 +23,13 @@ are managed on top of that (see the ADRs).
 
 ## Status
 
-Early construction. The library covers the `series`, `series/observations`, and
-`series/search` endpoints; the `fred` CLI (this repo's first consumer) can
-search, show series metadata, print observations, and chart them in an
-interactive terminal UI. The `fred-mcp` server (ADR-0010) speaks MCP over stdio
-with three tools (`search_series`, `get_series`, `get_observations`).
+Early construction. The library covers the `series`, `series/observations`,
+`series/search`, and `category` (`category`, `category/children`,
+`category/series`) endpoints; the `fred` CLI (this repo's first consumer) can
+search, show series metadata, print observations, chart them in an interactive
+terminal UI, and browse the category tree. The `fred-mcp` server (ADR-0010)
+speaks MCP over stdio with three tools (`search_series`, `get_series`,
+`get_observations`).
 
 ## Using the CLI
 
@@ -39,6 +41,9 @@ fred series GNPCA                                                 # show one ser
 fred observations GDP --units pch --sort desc --limit 4          # transformed observations
 fred observations GDP --frequency annual --aggregation avg       # aggregate to a lower frequency
 fred chart GNPCA --start 1950-01-01                              # interactive terminal chart
+fred category                                                    # browse the category tree (root)
+fred category 13                                                 # a category and its children
+fred category 125 --series --limit 5                            # series in a category
 fred series GNPCA --json | jq .frequency                        # JSON output for scripting
 ```
 

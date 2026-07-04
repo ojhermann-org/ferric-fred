@@ -27,7 +27,8 @@ fn help_lists_every_subcommand() {
         .stdout(predicate::str::contains("search"))
         .stdout(predicate::str::contains("series"))
         .stdout(predicate::str::contains("observations"))
-        .stdout(predicate::str::contains("chart"));
+        .stdout(predicate::str::contains("chart"))
+        .stdout(predicate::str::contains("category"));
 }
 
 #[test]
@@ -138,4 +139,27 @@ fn json_output_emits_json() {
         .success()
         .stdout(predicate::str::starts_with("{"))
         .stdout(predicate::str::contains("\"id\": \"GNPCA\""));
+}
+
+#[test]
+#[ignore = "hits the live FRED API; requires FRED_API_KEY"]
+fn category_browse_lists_children() {
+    // The root (id 0) always has child categories.
+    Command::cargo_bin("fred")
+        .unwrap()
+        .args(["category", "0"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Categories"));
+}
+
+#[test]
+#[ignore = "hits the live FRED API; requires FRED_API_KEY"]
+fn category_series_lists_series() {
+    Command::cargo_bin("fred")
+        .unwrap()
+        .args(["category", "125", "--series", "--limit", "1"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("series in category 125"));
 }

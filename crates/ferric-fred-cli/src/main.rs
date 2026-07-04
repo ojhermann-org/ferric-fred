@@ -11,7 +11,7 @@ mod chart;
 use anyhow::{Context, Result};
 use chrono::NaiveDate;
 use clap::{Args, Parser, Subcommand};
-use ferric_fred::{Client, ObservationsRequest, SeriesId};
+use ferric_fred::{CategoryId, Client, ObservationsRequest, SeriesId};
 
 use args::{AggregationArg, FrequencyArg, OrderByArg, SortOrderArg, UnitsArg};
 
@@ -62,6 +62,27 @@ enum Command {
         #[command(flatten)]
         options: ObservationOptions,
     },
+    /// Browse the FRED category tree, or list a category's series.
+    ///
+    /// With no flags, prints the category and its child categories (the root,
+    /// id 0, by default). With `--series`, lists the series in the category.
+    Category {
+        /// Category id (default: 0, the tree root).
+        #[arg(default_value_t = 0)]
+        id: u32,
+        /// List the series in the category instead of its child categories.
+        #[arg(long)]
+        series: bool,
+        /// With `--series`: maximum number of series to return.
+        #[arg(long)]
+        limit: Option<u32>,
+        /// With `--series`: field to order results by.
+        #[arg(long)]
+        order_by: Option<OrderByArg>,
+        /// With `--series`: sort order.
+        #[arg(long)]
+        sort: Option<SortOrderArg>,
+    },
 }
 
 /// Options controlling an observations query.
@@ -108,6 +129,13 @@ async fn main() -> Result<()> {
         Command::Series { id } => series(&client, &id, json).await,
         Command::Observations { id, options } => observations(&client, &id, &options, json).await,
         Command::Chart { id, options } => chart_command(&client, &id, &options).await,
+        Command::Category {
+            id,
+            series,
+            limit,
+            order_by,
+            sort,
+        } => category(&client, id, series, limit, order_by, sort, json).await,
     }
 }
 
@@ -173,6 +201,75 @@ async fn series(client: &Client, id: &str, json: bool) -> Result<()> {
         series.observation_start, series.observation_end
     );
     println!("  updated:    {}", series.last_updated);
+    Ok(())
+}
+
+async fn category(
+    client: &Client,
+    id: u32,
+    series: bool,
+    limit: Option<u32>,
+    order_by: Option<OrderByArg>,
+    sort: Option<SortOrderArg>,
+    json: bool,
+) -> Result<()> {
+    let category_id = CategoryId::new(id);
+
+    if series {
+        let mut request = client.category_series(category_id);
+        if let Some(limit) = limit {
+            request = request.limit(limit);
+        }
+        if let Some(order_by) = order_by {
+            request = request.order_by(order_by.into());
+        }
+        if let Some(sort) = sort {
+            request = request.sort_order(sort.into());
+        }
+
+        let results = request
+            .send()
+            .await
+            .with_context(|| format!("fetching series for category {id} failed"))?;
+
+        if json {
+            return print_json(&results);
+        }
+
+        println!("{} series in category {id}:", results.count);
+        for series in &results.series {
+            println!("{}\t{}", series.id, series.title);
+        }
+        return Ok(());
+    }
+
+    let category = client
+        .category(category_id)
+        .await
+        .with_context(|| format!("fetching category {id} failed"))?;
+    let children = client
+        .category_children(category_id)
+        .await
+        .with_context(|| format!("fetching children of category {id} failed"))?;
+
+    if json {
+        return print_json(&serde_json::json!({
+            "category": category,
+            "children": children,
+        }));
+    }
+
+    println!(
+        "{}: {}  (parent {})",
+        category.id, category.name, category.parent_id
+    );
+    if children.is_empty() {
+        println!("  (no subcategories — use --series to list this category's series)");
+    } else {
+        for child in &children {
+            println!("  {}\t{}", child.id, child.name);
+        }
+    }
     Ok(())
 }
 
