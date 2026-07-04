@@ -36,3 +36,42 @@ impl From<String> for SeriesId {
         Self(s)
     }
 }
+
+/// A FRED category identifier — a numeric node in the category tree (the root is
+/// [`CategoryId::ROOT`], id `0`).
+///
+/// A `Copy` newtype over `u32` so a category id can't be silently swapped for a
+/// parent id, a count, or an arbitrary number (ADR-0005). `#[serde(transparent)]`
+/// carries it on the wire as the bare integer FRED sends.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
+#[serde(transparent)]
+pub struct CategoryId(u32);
+
+impl CategoryId {
+    /// The root of the FRED category tree (id `0`).
+    pub const ROOT: Self = Self(0);
+
+    /// Wrap a numeric id as a [`CategoryId`].
+    pub fn new(id: u32) -> Self {
+        Self(id)
+    }
+
+    /// The underlying numeric id.
+    pub fn get(self) -> u32 {
+        self.0
+    }
+}
+
+impl std::fmt::Display for CategoryId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<u32> for CategoryId {
+    fn from(id: u32) -> Self {
+        Self(id)
+    }
+}

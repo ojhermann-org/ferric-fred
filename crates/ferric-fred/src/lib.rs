@@ -20,6 +20,8 @@
 //! ```
 
 mod aggregation_method;
+mod category;
+mod category_series_request;
 mod client;
 mod error;
 mod frequency;
@@ -35,10 +37,12 @@ mod sort_order;
 mod units;
 
 pub use aggregation_method::AggregationMethod;
+pub use category::Category;
+pub use category_series_request::CategorySeriesRequest;
 pub use client::Client;
 pub use error::Error;
 pub use frequency::Frequency;
-pub use ids::SeriesId;
+pub use ids::{CategoryId, SeriesId};
 pub use observation::Observation;
 pub use observations_request::ObservationsRequest;
 pub use order_by::OrderBy;

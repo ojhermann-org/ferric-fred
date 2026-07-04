@@ -2,8 +2,8 @@ use serde::de::DeserializeOwned;
 use serde::Deserialize;
 
 use crate::{
-    Error, Observation, ObservationsRequest, Result, Series, SeriesId, SeriesSearchRequest,
-    SeriesSearchResults,
+    Category, CategoryId, CategorySeriesRequest, Error, Observation, ObservationsRequest, Result,
+    Series, SeriesId, SeriesSearchRequest, SeriesSearchResults,
 };
 
 /// Base URL for the FRED REST API.
@@ -148,6 +148,78 @@ impl Client {
         self.get("/series/search", &request.query_params()).await
     }
 
+    /// Fetch a single category by id (the `fred/category` endpoint). Use
+    /// [`CategoryId::ROOT`] for the top of the tree.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails to send, FRED returns a non-success
+    /// status, or the response body cannot be deserialized.
+    pub async fn category(&self, category_id: CategoryId) -> Result<Category> {
+        let response: CategoriesResponse = self
+            .get(
+                "/category",
+                &[("category_id", category_id.get().to_string())],
+            )
+            .await?;
+        response
+            .categories
+            .into_iter()
+            .next()
+            .ok_or_else(|| Error::Api {
+                status: 200,
+                code: None,
+                message: format!("FRED returned no category for id `{category_id}`"),
+            })
+    }
+
+    /// Fetch the child categories of a category (the `fred/category/children`
+    /// endpoint) — the primary way to walk the category tree downward.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails to send, FRED returns a non-success
+    /// status, or the response body cannot be deserialized.
+    pub async fn category_children(&self, category_id: CategoryId) -> Result<Vec<Category>> {
+        let response: CategoriesResponse = self
+            .get(
+                "/category/children",
+                &[("category_id", category_id.get().to_string())],
+            )
+            .await?;
+        Ok(response.categories)
+    }
+
+    /// Begin a request for the series in a category (the `fred/category/series`
+    /// endpoint).
+    ///
+    /// Returns a builder; set optional ordering/paging and call
+    /// [`CategorySeriesRequest::send`] to run it.
+    ///
+    /// ```no_run
+    /// # async fn run(client: &ferric_fred::Client) -> ferric_fred::Result<()> {
+    /// use ferric_fred::CategoryId;
+    /// let results = client
+    ///     .category_series(CategoryId::new(125))
+    ///     .limit(5)
+    ///     .send()
+    ///     .await?;
+    /// println!("{} series", results.count);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn category_series(&self, category_id: CategoryId) -> CategorySeriesRequest<'_> {
+        CategorySeriesRequest::new(self, category_id)
+    }
+
+    /// Run a category/series request (invoked by [`CategorySeriesRequest::send`]).
+    pub(crate) async fn execute_category_series(
+        &self,
+        request: &CategorySeriesRequest<'_>,
+    ) -> Result<SeriesSearchResults> {
+        self.get("/category/series", &request.query_params()).await
+    }
+
     /// GET `path` with `params` plus `api_key`/`file_type`, then deserialize the
     /// JSON body as `T`. A non-success status becomes [`Error::Api`] (or
     /// [`Error::RateLimited`]); a body that doesn't match `T` becomes
@@ -217,6 +289,12 @@ struct SeriesResponse {
     seriess: Vec<Series>,
 }
 
+/// The `category` / `category/children` response envelope.
+#[derive(Deserialize)]
+struct CategoriesResponse {
+    categories: Vec<Category>,
+}
+
 /// FRED's error response body.
 #[derive(Deserialize)]
 struct FredErrorBody {
@@ -227,7 +305,7 @@ struct FredErrorBody {
 #[cfg(test)]
 mod tests {
     use super::Client;
-    use crate::{Error, Frequency, SeasonalAdjustment, SeriesId, Units};
+    use crate::{CategoryId, Error, Frequency, OrderBy, SeasonalAdjustment, SeriesId, Units};
     use wiremock::matchers::{method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -402,5 +480,74 @@ mod tests {
             .await
             .expect("request with the expected params should match the mock");
         assert!(observations.is_empty());
+    }
+
+    #[tokio::test]
+    async fn category_parses() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/category"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"categories":[{"id":125,"name":"Trade Balance","parent_id":13}]}"#,
+            ))
+            .mount(&server)
+            .await;
+
+        let category = client_for(&server)
+            .category(CategoryId::new(125))
+            .await
+            .expect("category parses");
+        assert_eq!(category.id, CategoryId::new(125));
+        assert_eq!(category.name, "Trade Balance");
+        assert_eq!(category.parent_id, CategoryId::new(13));
+    }
+
+    #[tokio::test]
+    async fn category_children_parse() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/category/children"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"categories":[
+                    {"id":16,"name":"Exports","parent_id":13},
+                    {"id":17,"name":"Imports","parent_id":13}
+                ]}"#,
+            ))
+            .mount(&server)
+            .await;
+
+        let children = client_for(&server)
+            .category_children(CategoryId::new(13))
+            .await
+            .expect("children parse");
+        assert_eq!(children.len(), 2);
+        assert_eq!(children[0].name, "Exports");
+        assert_eq!(children[1].id, CategoryId::new(17));
+    }
+
+    #[tokio::test]
+    async fn category_series_sends_params_and_parses() {
+        let server = MockServer::start().await;
+        // Matches only when the builder's params reach the wire.
+        Mock::given(method("GET"))
+            .and(path("/category/series"))
+            .and(query_param("category_id", "125"))
+            .and(query_param("order_by", "popularity"))
+            .and(query_param("limit", "2"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(format!(
+                "{{\"count\":1,\"offset\":0,\"limit\":2,\"seriess\":[{SERIES_OBJECT}]}}"
+            )))
+            .mount(&server)
+            .await;
+
+        let results = client_for(&server)
+            .category_series(CategoryId::new(125))
+            .order_by(OrderBy::Popularity)
+            .limit(2)
+            .send()
+            .await
+            .expect("category series parse");
+        assert_eq!(results.count, 1);
+        assert_eq!(results.series[0].id, SeriesId::new("GNPCA"));
     }
 }
