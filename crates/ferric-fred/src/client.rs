@@ -305,12 +305,41 @@ impl Client {
     /// # }
     /// ```
     pub fn tags(&self) -> TagsRequest<'_> {
-        TagsRequest::new(self)
+        TagsRequest::new(self, "/tags")
     }
 
-    /// Run a tags request (invoked by [`TagsRequest::send`]).
+    /// Begin a request for the tags that co-occur with a seed set of tags (the
+    /// `fred/related_tags` endpoint) — refine a faceted search by discovering
+    /// adjacent tags.
+    ///
+    /// Accepts any iterable of tag names (they are joined with `;` for FRED).
+    /// Returns a [`TagsRequest`] builder; set optional search text/sort/paging
+    /// and call [`send`](TagsRequest::send) to run it.
+    ///
+    /// ```no_run
+    /// # async fn run(client: &ferric_fred::Client) -> ferric_fred::Result<()> {
+    /// let results = client.related_tags(["gdp"]).limit(10).send().await?;
+    /// println!("{} tags related to gdp", results.count);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn related_tags<I, S>(&self, tag_names: I) -> TagsRequest<'_>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let joined = tag_names
+            .into_iter()
+            .map(|name| name.as_ref().to_owned())
+            .collect::<Vec<_>>()
+            .join(";");
+        TagsRequest::with_tag_names(self, "/related_tags", joined)
+    }
+
+    /// Run a tags request — `tags` or `related_tags` (invoked by
+    /// [`TagsRequest::send`]).
     pub(crate) async fn execute_tags(&self, request: &TagsRequest<'_>) -> Result<TagsResults> {
-        self.get("/tags", &request.query_params()).await
+        self.get(request.path(), &request.query_params()).await
     }
 
     /// Begin a request for the series carrying *all* of the given tags (the
@@ -796,6 +825,30 @@ mod tests {
         assert_eq!(results.count, 1);
         assert_eq!(results.tags[0].name, "gdp");
         assert_eq!(results.tags[0].series_count, 12345);
+    }
+
+    #[tokio::test]
+    async fn related_tags_send_seed_names_and_parses() {
+        let server = MockServer::start().await;
+        // The seed tags reach `/related_tags` joined by `;`.
+        Mock::given(method("GET"))
+            .and(path("/related_tags"))
+            .and(query_param("tag_names", "gdp;quarterly"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"count":1,"offset":0,"limit":1000,"tags":[
+                    {"name":"nsa","group_id":"seas","popularity":90,"series_count":42}
+                ]}"#,
+            ))
+            .mount(&server)
+            .await;
+
+        let results = client_for(&server)
+            .related_tags(["gdp", "quarterly"])
+            .send()
+            .await
+            .expect("related_tags parse");
+        assert_eq!(results.count, 1);
+        assert_eq!(results.tags[0].name, "nsa");
     }
 
     #[tokio::test]

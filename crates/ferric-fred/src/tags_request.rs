@@ -1,7 +1,10 @@
 use crate::{Client, Result, SortOrder, TagsResults};
 
-/// A builder for a `tags` request, returned by [`Client::tags`]. Browses or
-/// searches FRED's tag vocabulary, with optional search text, sort, and paging.
+/// A builder for the tag-listing endpoints, returned by [`Client::tags`]
+/// (`fred/tags`, browse/search the whole vocabulary) and
+/// [`Client::related_tags`] (`fred/related_tags`, tags co-occurring with a seed
+/// set). Both share optional search text, sort, and paging and return
+/// [`TagsResults`]; `related_tags` additionally carries the seed `tag_names`.
 /// Finish with [`send`](TagsRequest::send).
 ///
 /// ```no_run
@@ -17,6 +20,11 @@ use crate::{Client, Result, SortOrder, TagsResults};
 #[must_use = "a TagsRequest does nothing until you call `.send()`"]
 pub struct TagsRequest<'a> {
     client: &'a Client,
+    /// The endpoint path, `/tags` or `/related_tags`.
+    path: &'static str,
+    /// FRED's `tag_names` (seed tags joined with `;`); required by
+    /// `/related_tags`, absent for `/tags`.
+    tag_names: Option<String>,
     search_text: Option<String>,
     sort_order: Option<SortOrder>,
     limit: Option<u32>,
@@ -24,14 +32,33 @@ pub struct TagsRequest<'a> {
 }
 
 impl<'a> TagsRequest<'a> {
-    pub(crate) fn new(client: &'a Client) -> Self {
+    pub(crate) fn new(client: &'a Client, path: &'static str) -> Self {
         Self {
             client,
+            path,
+            tag_names: None,
             search_text: None,
             sort_order: None,
             limit: None,
             offset: None,
         }
+    }
+
+    /// Construct a request for `/related_tags` with the seed `tag_names`.
+    pub(crate) fn with_tag_names(
+        client: &'a Client,
+        path: &'static str,
+        tag_names: String,
+    ) -> Self {
+        Self {
+            tag_names: Some(tag_names),
+            ..Self::new(client, path)
+        }
+    }
+
+    /// The endpoint path this request targets (used by the client to dispatch).
+    pub(crate) fn path(&self) -> &'static str {
+        self.path
     }
 
     /// Restrict to tags matching these words (`search_text`).
@@ -73,6 +100,9 @@ impl<'a> TagsRequest<'a> {
     /// `file_type` are added by the client, not here.
     pub(crate) fn query_params(&self) -> Vec<(&'static str, String)> {
         let mut params: Vec<(&'static str, String)> = Vec::new();
+        if let Some(tag_names) = &self.tag_names {
+            params.push(("tag_names", tag_names.clone()));
+        }
         if let Some(text) = &self.search_text {
             params.push(("search_text", text.clone()));
         }

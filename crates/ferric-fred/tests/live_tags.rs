@@ -33,4 +33,13 @@ async fn tags_search_series_and_series_tags() {
         .await
         .expect("series/tags");
     assert!(!series_tags.tags.is_empty());
+
+    // Tags co-occurring with "gdp".
+    let related = client
+        .related_tags(["gdp"])
+        .limit(5)
+        .send()
+        .await
+        .expect("related_tags");
+    assert!(related.count > 0);
 }
