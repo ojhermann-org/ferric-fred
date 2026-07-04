@@ -4,7 +4,7 @@ use serde::Deserialize;
 use crate::{
     Category, CategoryId, CategorySeriesRequest, Error, Observation, ObservationsRequest, Release,
     ReleaseId, ReleaseSeriesRequest, ReleasesRequest, ReleasesResults, Result, Series, SeriesId,
-    SeriesSearchRequest, SeriesSearchResults,
+    SeriesSearchRequest, SeriesSearchResults, TagsRequest, TagsResults, TagsSeriesRequest,
 };
 
 /// Base URL for the FRED REST API.
@@ -295,6 +295,78 @@ impl Client {
         request: &ReleaseSeriesRequest<'_>,
     ) -> Result<SeriesSearchResults> {
         self.get("/release/series", &request.query_params()).await
+    }
+
+    /// Begin a request to browse or search FRED's tag vocabulary (the
+    /// `fred/tags` endpoint).
+    ///
+    /// Returns a builder; set optional search text/sort/paging and call
+    /// [`TagsRequest::send`] to run it.
+    ///
+    /// ```no_run
+    /// # async fn run(client: &ferric_fred::Client) -> ferric_fred::Result<()> {
+    /// let results = client.tags().search_text("gdp").limit(10).send().await?;
+    /// println!("{} tags", results.count);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn tags(&self) -> TagsRequest<'_> {
+        TagsRequest::new(self)
+    }
+
+    /// Run a tags request (invoked by [`TagsRequest::send`]).
+    pub(crate) async fn execute_tags(&self, request: &TagsRequest<'_>) -> Result<TagsResults> {
+        self.get("/tags", &request.query_params()).await
+    }
+
+    /// Begin a request for the series carrying *all* of the given tags (the
+    /// `fred/tags/series` endpoint) — faceted discovery.
+    ///
+    /// Accepts any iterable of tag names (they are joined with `;` for FRED).
+    /// Returns a builder; set optional ordering/paging and call
+    /// [`TagsSeriesRequest::send`] to run it.
+    ///
+    /// ```no_run
+    /// # async fn run(client: &ferric_fred::Client) -> ferric_fred::Result<()> {
+    /// let results = client.tags_series(["gdp", "quarterly"]).limit(5).send().await?;
+    /// println!("{} series", results.count);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn tags_series<I, S>(&self, tag_names: I) -> TagsSeriesRequest<'_>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let joined = tag_names
+            .into_iter()
+            .map(|name| name.as_ref().to_owned())
+            .collect::<Vec<_>>()
+            .join(";");
+        TagsSeriesRequest::new(self, joined)
+    }
+
+    /// Run a tags/series request (invoked by [`TagsSeriesRequest::send`]).
+    pub(crate) async fn execute_tags_series(
+        &self,
+        request: &TagsSeriesRequest<'_>,
+    ) -> Result<SeriesSearchResults> {
+        self.get("/tags/series", &request.query_params()).await
+    }
+
+    /// Fetch the tags attached to a series (the `fred/series/tags` endpoint) —
+    /// the reverse of [`tags_series`](Client::tags_series).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails to send, FRED returns a non-success
+    /// status, or the response body cannot be deserialized.
+    pub async fn series_tags(&self, series_id: &SeriesId) -> Result<TagsResults> {
+        self.get(
+            "/series/tags",
+            &[("series_id", series_id.as_str().to_owned())],
+        )
+        .await
     }
 
     /// GET `path` with `params` plus `api_key`/`file_type`, then deserialize the
@@ -704,5 +776,78 @@ mod tests {
             .expect("release series parse");
         assert_eq!(results.count, 1);
         assert_eq!(results.series[0].id, SeriesId::new("GNPCA"));
+    }
+
+    #[tokio::test]
+    async fn tags_search_sends_text_and_parses() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/tags"))
+            .and(query_param("search_text", "gdp"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"count":1,"offset":0,"limit":1000,"tags":[
+                    {"name":"gdp","group_id":"gen","popularity":80,"series_count":12345}
+                ]}"#,
+            ))
+            .mount(&server)
+            .await;
+
+        let results = client_for(&server)
+            .tags()
+            .search_text("gdp")
+            .send()
+            .await
+            .expect("tags parse");
+        assert_eq!(results.count, 1);
+        assert_eq!(results.tags[0].name, "gdp");
+        assert_eq!(results.tags[0].series_count, 12345);
+    }
+
+    #[tokio::test]
+    async fn tags_series_joins_names_and_parses() {
+        let server = MockServer::start().await;
+        // The two tag names must reach the wire joined by `;`.
+        Mock::given(method("GET"))
+            .and(path("/tags/series"))
+            .and(query_param("tag_names", "gdp;quarterly"))
+            .and(query_param("limit", "2"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(format!(
+                "{{\"count\":1,\"offset\":0,\"limit\":2,\"seriess\":[{SERIES_OBJECT}]}}"
+            )))
+            .mount(&server)
+            .await;
+
+        let results = client_for(&server)
+            .tags_series(["gdp", "quarterly"])
+            .limit(2)
+            .send()
+            .await
+            .expect("tags/series parse");
+        assert_eq!(results.count, 1);
+        assert_eq!(results.series[0].id, SeriesId::new("GNPCA"));
+    }
+
+    #[tokio::test]
+    async fn series_tags_parses() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/series/tags"))
+            .and(query_param("series_id", "GNPCA"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"count":2,"offset":0,"limit":1000,"tags":[
+                    {"name":"gnp","group_id":"gen","popularity":50,"series_count":10},
+                    {"name":"usa","group_id":"geo","notes":null,"popularity":100,"series_count":500}
+                ]}"#,
+            ))
+            .mount(&server)
+            .await;
+
+        let results = client_for(&server)
+            .series_tags(&SeriesId::new("GNPCA"))
+            .await
+            .expect("series/tags parse");
+        assert_eq!(results.count, 2);
+        assert_eq!(results.tags[0].name, "gnp");
+        assert!(results.tags[1].notes.is_none());
     }
 }

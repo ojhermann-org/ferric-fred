@@ -37,6 +37,9 @@ mod seasonal_adjustment;
 mod series;
 mod series_search_request;
 mod sort_order;
+mod tag;
+mod tags_request;
+mod tags_series_request;
 mod units;
 
 pub use aggregation_method::AggregationMethod;
@@ -57,6 +60,9 @@ pub use seasonal_adjustment::SeasonalAdjustment;
 pub use series::{Series, SeriesSearchResults};
 pub use series_search_request::SeriesSearchRequest;
 pub use sort_order::SortOrder;
+pub use tag::{Tag, TagsResults};
+pub use tags_request::TagsRequest;
+pub use tags_series_request::TagsSeriesRequest;
 pub use units::Units;
 
 /// A `Result` whose error type is this crate's [`Error`].
