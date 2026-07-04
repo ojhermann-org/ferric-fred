@@ -32,12 +32,15 @@ search, show series metadata, and print observations. The MCP server follows.
 The `fred` binary reads `FRED_API_KEY` from the environment (see [Secrets](#secrets)):
 
 ```sh
-fred search "unemployment rate" --limit 3   # find series by text
-fred series GNPCA                            # show one series' metadata
-fred observations GNPCA --start 2020-01-01   # print observations (--end, --limit too)
+fred search "unemployment rate" --order-by popularity --limit 3  # find series by text
+fred series GNPCA                                                 # show one series' metadata
+fred observations GDP --units pch --sort desc --limit 4          # transformed observations
+fred observations GDP --frequency annual --aggregation avg       # aggregate to a lower frequency
 ```
 
-Run it from the workspace with `cargo run -p ferric-fred-cli -- <args>`.
+Run it from the workspace with `cargo run -p ferric-fred-cli -- <args>`, and see
+`fred <command> --help` for every flag (`--units`, `--order-by`, … accept the
+FRED value sets).
 
 ## Development
 
