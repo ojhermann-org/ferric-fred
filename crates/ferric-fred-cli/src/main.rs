@@ -43,10 +43,13 @@ enum Command {
         #[arg(long)]
         sort: Option<SortOrderArg>,
     },
-    /// Show metadata for a single series.
+    /// Show metadata for a single series (or, with --tags, its tags).
     Series {
         /// FRED series id, e.g. GNPCA.
         id: String,
+        /// List the series' tags instead of its metadata.
+        #[arg(long)]
+        tags: bool,
     },
     /// Print a series' observations (date and value).
     Observations {
@@ -103,6 +106,28 @@ enum Command {
         #[arg(long)]
         sort: Option<SortOrderArg>,
     },
+    /// Browse/search FRED tags, or find series carrying a set of tags.
+    ///
+    /// With no tag names, browses the tag vocabulary (use `--search-text` to
+    /// filter). With one or more tag names, lists the series carrying all of
+    /// them.
+    Tags {
+        /// Tag names. Give one or more to list series carrying all of them;
+        /// omit to browse/search the tag vocabulary.
+        names: Vec<String>,
+        /// With no names: restrict the tag list to those matching this text.
+        #[arg(long)]
+        search_text: Option<String>,
+        /// Maximum number of results.
+        #[arg(long)]
+        limit: Option<u32>,
+        /// With tag names: field to order the matching series by.
+        #[arg(long)]
+        order_by: Option<OrderByArg>,
+        /// Sort order.
+        #[arg(long)]
+        sort: Option<SortOrderArg>,
+    },
 }
 
 /// Options controlling an observations query.
@@ -146,7 +171,7 @@ async fn main() -> Result<()> {
             order_by,
             sort,
         } => search(&client, &text, limit, order_by, sort, json).await,
-        Command::Series { id } => series(&client, &id, json).await,
+        Command::Series { id, tags } => series(&client, &id, tags, json).await,
         Command::Observations { id, options } => observations(&client, &id, &options, json).await,
         Command::Chart { id, options } => chart_command(&client, &id, &options).await,
         Command::Category {
@@ -163,6 +188,13 @@ async fn main() -> Result<()> {
             order_by,
             sort,
         } => release(&client, id, series, limit, order_by, sort, json).await,
+        Command::Tags {
+            names,
+            search_text,
+            limit,
+            order_by,
+            sort,
+        } => tags(&client, names, search_text, limit, order_by, sort, json).await,
     }
 }
 
@@ -209,9 +241,31 @@ async fn search(
     Ok(())
 }
 
-async fn series(client: &Client, id: &str, json: bool) -> Result<()> {
+async fn series(client: &Client, id: &str, tags: bool, json: bool) -> Result<()> {
+    let series_id = SeriesId::new(id);
+
+    if tags {
+        let results = client
+            .series_tags(&series_id)
+            .await
+            .with_context(|| format!("fetching tags for series `{id}` failed"))?;
+
+        if json {
+            return print_json(&results);
+        }
+
+        println!("{} tags for {id}:", results.count);
+        for tag in &results.tags {
+            println!(
+                "{}\t{}\t{} series",
+                tag.name, tag.group_id, tag.series_count
+            );
+        }
+        return Ok(());
+    }
+
     let series = client
-        .series(&SeriesId::new(id))
+        .series(&series_id)
         .await
         .with_context(|| format!("fetching series `{id}` failed"))?;
 
@@ -376,6 +430,72 @@ async fn release(
     println!("  press release: {}", release.press_release);
     if let Some(link) = &release.link {
         println!("  link:          {link}");
+    }
+    Ok(())
+}
+
+async fn tags(
+    client: &Client,
+    names: Vec<String>,
+    search_text: Option<String>,
+    limit: Option<u32>,
+    order_by: Option<OrderByArg>,
+    sort: Option<SortOrderArg>,
+    json: bool,
+) -> Result<()> {
+    if names.is_empty() {
+        // Browse / search the tag vocabulary.
+        let mut request = client.tags();
+        if let Some(text) = search_text {
+            request = request.search_text(text);
+        }
+        if let Some(limit) = limit {
+            request = request.limit(limit);
+        }
+        if let Some(sort) = sort {
+            request = request.sort_order(sort.into());
+        }
+
+        let results = request.send().await.context("listing tags failed")?;
+
+        if json {
+            return print_json(&results);
+        }
+
+        println!("{} tags:", results.count);
+        for tag in &results.tags {
+            println!(
+                "{}\t{}\t{} series",
+                tag.name, tag.group_id, tag.series_count
+            );
+        }
+        return Ok(());
+    }
+
+    // Series carrying all of the given tags.
+    let mut request = client.tags_series(&names);
+    if let Some(limit) = limit {
+        request = request.limit(limit);
+    }
+    if let Some(order_by) = order_by {
+        request = request.order_by(order_by.into());
+    }
+    if let Some(sort) = sort {
+        request = request.sort_order(sort.into());
+    }
+
+    let results = request
+        .send()
+        .await
+        .with_context(|| format!("fetching series for tags {names:?} failed"))?;
+
+    if json {
+        return print_json(&results);
+    }
+
+    println!("{} series tagged {}:", results.count, names.join(", "));
+    for series in &results.series {
+        println!("{}\t{}", series.id, series.title);
     }
     Ok(())
 }

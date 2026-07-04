@@ -29,7 +29,8 @@ fn help_lists_every_subcommand() {
         .stdout(predicate::str::contains("observations"))
         .stdout(predicate::str::contains("chart"))
         .stdout(predicate::str::contains("category"))
-        .stdout(predicate::str::contains("release"));
+        .stdout(predicate::str::contains("release"))
+        .stdout(predicate::str::contains("tags"));
 }
 
 #[test]
@@ -199,4 +200,33 @@ fn release_list_and_single_and_series() {
         .assert()
         .success()
         .stdout(predicate::str::contains("series in release 53"));
+}
+
+#[test]
+#[ignore = "hits the live FRED API; requires FRED_API_KEY"]
+fn tags_browse_search_and_series() {
+    let fred = || Command::cargo_bin("fred").unwrap();
+
+    fred()
+        .args(["tags", "--search-text", "gdp", "--limit", "3"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("tags:"));
+
+    fred()
+        .args(["tags", "gdp", "quarterly", "--limit", "1"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("tagged gdp, quarterly"));
+}
+
+#[test]
+#[ignore = "hits the live FRED API; requires FRED_API_KEY"]
+fn series_tags_lists_tags() {
+    Command::cargo_bin("fred")
+        .unwrap()
+        .args(["series", "GNPCA", "--tags"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("tags for GNPCA"));
 }
