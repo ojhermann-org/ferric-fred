@@ -6,11 +6,12 @@
 //! errors, and drives the async client with `#[tokio::main]` (ADR-0003).
 
 mod args;
+mod chart;
 
 use anyhow::{Context, Result};
 use chrono::NaiveDate;
 use clap::{Args, Parser, Subcommand};
-use ferric_fred::{Client, SeriesId};
+use ferric_fred::{Client, ObservationsRequest, SeriesId};
 
 use args::{AggregationArg, FrequencyArg, OrderByArg, SortOrderArg, UnitsArg};
 
@@ -45,6 +46,13 @@ enum Command {
     },
     /// Print a series' observations (date and value).
     Observations {
+        /// FRED series id, e.g. GNPCA.
+        id: String,
+        #[command(flatten)]
+        options: ObservationOptions,
+    },
+    /// Draw an interactive terminal chart of a series' observations.
+    Chart {
         /// FRED series id, e.g. GNPCA.
         id: String,
         #[command(flatten)]
@@ -93,7 +101,8 @@ async fn main() -> Result<()> {
             sort,
         } => search(&client, &text, limit, order_by, sort).await,
         Command::Series { id } => series(&client, &id).await,
-        Command::Observations { id, options } => observations(&client, &id, options).await,
+        Command::Observations { id, options } => observations(&client, &id, &options).await,
+        Command::Chart { id, options } => chart_command(&client, &id, &options).await,
     }
 }
 
@@ -146,7 +155,13 @@ async fn series(client: &Client, id: &str) -> Result<()> {
     Ok(())
 }
 
-async fn observations(client: &Client, id: &str, options: ObservationOptions) -> Result<()> {
+/// Build an observations request from the shared CLI options. Used by both the
+/// `observations` and `chart` commands.
+fn build_request<'a>(
+    client: &'a Client,
+    id: &str,
+    options: &ObservationOptions,
+) -> ObservationsRequest<'a> {
     let mut request = client.observations(&SeriesId::new(id));
     if let Some(start) = options.start {
         request = request.observation_start(start);
@@ -169,8 +184,11 @@ async fn observations(client: &Client, id: &str, options: ObservationOptions) ->
     if let Some(sort) = options.sort {
         request = request.sort_order(sort.into());
     }
+    request
+}
 
-    let observations = request
+async fn observations(client: &Client, id: &str, options: &ObservationOptions) -> Result<()> {
+    let observations = build_request(client, id, options)
         .send()
         .await
         .with_context(|| format!("fetching observations for `{id}` failed"))?;
@@ -183,6 +201,15 @@ async fn observations(client: &Client, id: &str, options: ObservationOptions) ->
         }
     }
     Ok(())
+}
+
+async fn chart_command(client: &Client, id: &str, options: &ObservationOptions) -> Result<()> {
+    let observations = build_request(client, id, options)
+        .send()
+        .await
+        .with_context(|| format!("fetching observations for `{id}` failed"))?;
+
+    chart::run(&observations, id)
 }
 
 #[cfg(test)]

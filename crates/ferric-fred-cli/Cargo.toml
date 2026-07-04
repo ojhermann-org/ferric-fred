@@ -11,11 +11,14 @@ path = "src/main.rs"
 
 [dependencies]
 # The library, by workspace path — a breaking library change can't compile-pass
-# the CLI without updating it (ADR-0002).
-ferric-fred = { path = "../ferric-fred" }
+# the CLI without updating it (ADR-0002). The explicit version (matching the
+# workspace version) is used when published to crates.io; the path is used
+# locally.
+ferric-fred = { path = "../ferric-fred", version = "0.0.0" }
 anyhow = { workspace = true }
 clap = { workspace = true }
 chrono = { workspace = true }
+ratatui = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 
 [lints]

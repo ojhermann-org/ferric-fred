@@ -21,9 +21,11 @@ thiserror = "2"
 chrono = { version = "0.4", default-features = false, features = ["serde", "std"] }
 tokio = { version = "1", default-features = false }
 
-# Binary-only (the CLI): ergonomic error context (ADR-0004) and arg parsing.
+# Binary-only (the CLI): ergonomic error context (ADR-0004), arg parsing, and
+# the terminal-UI toolkit for `fred chart`.
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
+ratatui = "0.29"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

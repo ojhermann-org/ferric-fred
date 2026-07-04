@@ -25,7 +25,8 @@ are managed on top of that (see the ADRs).
 
 Early construction. The library covers the `series`, `series/observations`, and
 `series/search` endpoints; the `fred` CLI (this repo's first consumer) can
-search, show series metadata, and print observations. The MCP server follows.
+search, show series metadata, print observations, and chart them in an
+interactive terminal UI. The MCP server follows.
 
 ## Using the CLI
 
@@ -36,7 +37,12 @@ fred search "unemployment rate" --order-by popularity --limit 3  # find series b
 fred series GNPCA                                                 # show one series' metadata
 fred observations GDP --units pch --sort desc --limit 4          # transformed observations
 fred observations GDP --frequency annual --aggregation avg       # aggregate to a lower frequency
+fred chart GNPCA --start 1950-01-01                              # interactive terminal chart
 ```
+
+`fred chart` opens an interactive [ratatui](https://ratatui.rs/) line chart of a
+series' observations (it accepts the same flags as `observations`); press `q`,
+`Esc`, or `Ctrl-C` to quit.
 
 Run it from the workspace with `cargo run -p ferric-fred-cli -- <args>`, and see
 `fred <command> --help` for every flag (`--units`, `--order-by`, … accept the
