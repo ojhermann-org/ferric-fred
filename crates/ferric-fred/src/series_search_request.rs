@@ -20,6 +20,7 @@ use crate::{Client, OrderBy, Result, SearchType, SeriesSearchResults, SortOrder}
 /// # }
 /// ```
 #[derive(Debug, Clone)]
+#[must_use = "a SeriesSearchRequest does nothing until you call `.send()`"]
 pub struct SeriesSearchRequest<'a> {
     client: &'a Client,
     search_text: String,
@@ -74,6 +75,11 @@ impl<'a> SeriesSearchRequest<'a> {
     }
 
     /// Run the search and return the matching series with pagination metadata.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails to send, FRED returns a non-success
+    /// status, or the response body cannot be deserialized.
     pub async fn send(self) -> Result<SeriesSearchResults> {
         self.client.execute_search(&self).await
     }

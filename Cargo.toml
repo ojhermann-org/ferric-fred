@@ -31,3 +31,8 @@ missing_docs = "warn"
 
 [workspace.lints.clippy]
 all = "warn"
+# Two pedantic lints adopted for public-API hygiene: builders/fallible fns are
+# marked #[must_use] and documented. must_use_candidate is deliberately left off
+# (too noisy — it wants #[must_use] on every getter).
+return_self_not_must_use = "warn"
+missing_errors_doc = "warn"

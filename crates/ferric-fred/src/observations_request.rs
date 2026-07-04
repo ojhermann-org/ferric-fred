@@ -24,6 +24,7 @@ use crate::{
 /// # }
 /// ```
 #[derive(Debug, Clone)]
+#[must_use = "an ObservationsRequest does nothing until you call `.send()`"]
 pub struct ObservationsRequest<'a> {
     client: &'a Client,
     series_id: SeriesId,
@@ -109,6 +110,11 @@ impl<'a> ObservationsRequest<'a> {
     }
 
     /// Run the request and return the matching observations.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails to send, FRED returns a non-success
+    /// status, or the response body cannot be deserialized.
     pub async fn send(self) -> Result<Vec<Observation>> {
         self.client.execute_observations(&self).await
     }

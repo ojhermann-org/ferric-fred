@@ -22,6 +22,10 @@ pub struct Client {
 
 impl Client {
     /// Build a client with the given FRED API key.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying HTTP client cannot be built.
     pub fn new(api_key: impl Into<String>) -> Result<Self> {
         let http = reqwest::Client::builder().build()?;
         Ok(Self {
@@ -33,6 +37,11 @@ impl Client {
 
     /// Build a client, reading the API key from the `FRED_API_KEY` environment
     /// variable.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidInput`] if `FRED_API_KEY` is unset, or an error if
+    /// the underlying HTTP client cannot be built.
     pub fn from_env() -> Result<Self> {
         let api_key = std::env::var("FRED_API_KEY").map_err(|_| {
             Error::InvalidInput("FRED_API_KEY environment variable is not set".to_owned())
@@ -75,6 +84,11 @@ impl Client {
     }
 
     /// Fetch metadata for a series (the `fred/series` endpoint).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails to send, FRED returns a non-success
+    /// status, or the response body cannot be deserialized.
     pub async fn series(&self, series_id: &SeriesId) -> Result<Series> {
         let response: SeriesResponse = self
             .get("/series", &[("series_id", series_id.as_str().to_owned())])
