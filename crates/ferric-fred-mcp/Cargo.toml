@@ -1,0 +1,24 @@
+[package]
+name = "ferric-fred-mcp"
+description = "MCP server exposing FRED (Federal Reserve Economic Data), built on the ferric-fred client."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "fred-mcp"
+path = "src/main.rs"
+
+[dependencies]
+# The library, by workspace path (+ version for publishing), per ADR-0002.
+ferric-fred = { path = "../ferric-fred", version = "0.0.0" }
+anyhow = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "io-std"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+rmcp = { version = "2.1.0", features = ["transport-io", "schemars"] }
+# For deriving JsonSchema on tool input structs; version tracks rmcp's schemars.
+schemars = "1"
+
+[lints]
+workspace = true

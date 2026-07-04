@@ -26,7 +26,8 @@ are managed on top of that (see the ADRs).
 Early construction. The library covers the `series`, `series/observations`, and
 `series/search` endpoints; the `fred` CLI (this repo's first consumer) can
 search, show series metadata, print observations, and chart them in an
-interactive terminal UI. The MCP server follows.
+interactive terminal UI. The `fred-mcp` server (ADR-0010) now speaks MCP over
+stdio with a first `get_series` tool; the remaining tools follow.
 
 ## Using the CLI
 

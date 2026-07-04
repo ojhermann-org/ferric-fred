@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/ferric-fred", "crates/ferric-fred-cli"]
+members = ["crates/ferric-fred", "crates/ferric-fred-cli", "crates/ferric-fred-mcp"]
 
 # Shared metadata, dependency versions, and lints, inherited by every member
 # crate via `field.workspace = true` (see ADR-0002).
