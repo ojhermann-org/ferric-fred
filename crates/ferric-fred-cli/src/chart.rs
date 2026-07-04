@@ -11,18 +11,23 @@ use ratatui::text::Line;
 use ratatui::widgets::{Axis, Block, Chart, Dataset, GraphType};
 use ratatui::{DefaultTerminal, Frame};
 
-/// Observations reduced to a plottable series plus axis bounds and labels.
+/// Observations reduced to a plottable series plus axis bounds, tick labels, and
+/// a one-line stats summary.
 struct ChartData {
     points: Vec<(f64, f64)>,
     x_bounds: [f64; 2],
     y_bounds: [f64; 2],
-    x_labels: [String; 2],
-    y_labels: [String; 2],
+    /// X tick labels (dates) low→high: first, midpoint, last.
+    x_labels: Vec<String>,
+    /// Y tick labels low→high: min, midpoint, max.
+    y_labels: Vec<String>,
+    /// `n=… min … max … last …`, shown along the chart's bottom border.
+    stats: String,
 }
 
 /// Build plottable data from observations: drop missing values, sort by date,
-/// and compute axis bounds/labels. Returns `None` when fewer than two points
-/// have values (nothing meaningful to plot).
+/// and compute axis bounds, tick labels, and a stats summary. Returns `None`
+/// when fewer than two points have values (nothing meaningful to plot).
 fn build_chart_data(observations: &[Observation]) -> Option<ChartData> {
     let mut dated: Vec<(NaiveDate, f64)> = observations
         .iter()
@@ -40,24 +45,46 @@ fn build_chart_data(observations: &[Observation]) -> Option<ChartData> {
 
     let x_bounds = [points[0].0, points[points.len() - 1].0];
 
-    let mut y_min = f64::INFINITY;
-    let mut y_max = f64::NEG_INFINITY;
+    let mut data_min = f64::INFINITY;
+    let mut data_max = f64::NEG_INFINITY;
     for &(_, y) in &points {
-        y_min = y_min.min(y);
-        y_max = y_max.max(y);
+        data_min = data_min.min(y);
+        data_max = data_max.max(y);
     }
-    if (y_max - y_min).abs() < f64::EPSILON {
-        // Flat series: give the axis some height so the line stays visible.
-        y_min -= 1.0;
-        y_max += 1.0;
-    }
+    // Plot to the data range, but pad a flat series so its line stays visible.
+    // Tick labels track these (padded) bounds so they line up on the axis.
+    let (y_lo, y_hi) = if (data_max - data_min).abs() < f64::EPSILON {
+        (data_min - 1.0, data_max + 1.0)
+    } else {
+        (data_min, data_max)
+    };
+
+    let first_date = dated[0].0;
+    let last_date = dated[dated.len() - 1].0;
+    let x_mid = f64::midpoint(x_bounds[0], x_bounds[1]);
+    let mid_date = NaiveDate::from_num_days_from_ce_opt(x_mid as i32).unwrap_or(first_date);
+
+    let latest = points[points.len() - 1].1;
+    let stats = format!(
+        "n={}  min {data_min:.2}  max {data_max:.2}  last {latest:.2}",
+        points.len()
+    );
 
     Some(ChartData {
         points,
         x_bounds,
-        y_bounds: [y_min, y_max],
-        x_labels: [dated[0].0.to_string(), dated[dated.len() - 1].0.to_string()],
-        y_labels: [format!("{y_min:.2}"), format!("{y_max:.2}")],
+        y_bounds: [y_lo, y_hi],
+        x_labels: vec![
+            first_date.to_string(),
+            mid_date.to_string(),
+            last_date.to_string(),
+        ],
+        y_labels: vec![
+            format!("{y_lo:.2}"),
+            format!("{:.2}", f64::midpoint(y_lo, y_hi)),
+            format!("{y_hi:.2}"),
+        ],
+        stats,
     })
 }
 
@@ -71,7 +98,11 @@ fn render_chart(frame: &mut Frame, data: &ChartData, title: &str) {
 
     let axis_style = Style::default().fg(Color::Gray);
     let chart = Chart::new(vec![dataset])
-        .block(Block::bordered().title(format!("{title}  —  press q to quit")))
+        .block(
+            Block::bordered()
+                .title(format!("{title}  —  press q to quit"))
+                .title_bottom(data.stats.as_str()),
+        )
         .x_axis(
             Axis::default()
                 .style(axis_style)
@@ -142,10 +173,26 @@ mod tests {
     fn drops_missing_values_and_computes_labels() {
         let data = build_chart_data(&[obs(2020, Some(1.0)), obs(2021, None), obs(2022, Some(3.0))])
             .expect("two plottable points");
-        assert_eq!(data.points.len(), 2); // the None is dropped
-        assert_eq!(data.y_labels, ["1.00".to_string(), "3.00".to_string()]);
+        // The `None` is dropped, leaving two plotted points.
+        assert_eq!(data.points.len(), 2);
+        // Y axis: min / midpoint / max.
+        assert_eq!(data.y_labels, ["1.00", "2.00", "3.00"].map(String::from));
+        // X axis: first / midpoint / last.
+        assert_eq!(data.x_labels.len(), 3);
         assert_eq!(data.x_labels[0], "2020-01-01");
-        assert_eq!(data.x_labels[1], "2022-01-01");
+        assert_eq!(data.x_labels[2], "2022-01-01");
+    }
+
+    #[test]
+    fn stats_summarize_the_series() {
+        // Latest date (2022) has value 3.0; min/max span all plotted points.
+        let data = build_chart_data(&[
+            obs(2020, Some(1.0)),
+            obs(2021, Some(5.0)),
+            obs(2022, Some(3.0)),
+        ])
+        .expect("three plottable points");
+        assert_eq!(data.stats, "n=3  min 1.00  max 5.00  last 3.00");
     }
 
     #[test]
@@ -156,10 +203,13 @@ mod tests {
 
     #[test]
     fn renders_a_frame_without_error() {
-        let data = build_chart_data(&[obs(2020, Some(1.0)), obs(2022, Some(3.0))]).unwrap();
-        let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        let series: Vec<Observation> = (2000..=2015)
+            .map(|y| obs(y, Some((f64::from(y - 2000) - 7.0).powi(2))))
+            .collect();
+        let data = build_chart_data(&series).unwrap();
+        let mut terminal = Terminal::new(TestBackend::new(72, 16)).unwrap();
         terminal
-            .draw(|frame| render_chart(frame, &data, "GNPCA"))
+            .draw(|frame| render_chart(frame, &data, "DEMO"))
             .expect("frame renders without error");
     }
 }
