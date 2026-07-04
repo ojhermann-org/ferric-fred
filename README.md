@@ -76,13 +76,15 @@ FRED value sets).
 
 `fred-mcp` is an [MCP](https://modelcontextprotocol.io/) server (ADR-0010) that
 exposes FRED to MCP-capable clients over stdio. It reads `FRED_API_KEY` from the
-environment and provides sixteen tools:
+environment and provides eighteen tools:
 
 | Tool | Purpose |
 |------|---------|
 | `search_series` | Find series by text (with ordering, sort, limit) |
 | `get_series` | Metadata for a series id |
 | `get_observations` | A series' observations (date range, units transform, frequency aggregation, sort, limit) |
+| `get_series_categories` | The categories a series belongs to |
+| `get_series_release` | The release a series belongs to |
 | `get_category` | A category's name and parent (id 0 is the tree root) |
 | `get_category_children` | The child categories of a category (walk the tree) |
 | `get_category_series` | The series in a category (with ordering, sort, limit) |

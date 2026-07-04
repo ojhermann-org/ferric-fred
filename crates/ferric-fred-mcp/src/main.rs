@@ -4,7 +4,8 @@
 //! library's endpoints and return the domain types as JSON. The API key comes
 //! from `FRED_API_KEY` via `Client::from_env` (ADR-0009).
 //!
-//! Tools: `search_series`, `get_series`, `get_observations`, the category tools
+//! Tools: `search_series`, `get_series`, `get_observations`, `get_series_categories`,
+//! `get_series_release`, the category tools
 //! (`get_category`, `get_category_children`, `get_category_series`), the release
 //! tools (`get_releases`, `get_release`, `get_release_series`), the source tools
 //! (`get_sources`, `get_source`, `get_source_releases`), and the tag tools
@@ -690,6 +691,58 @@ impl FredServer {
             )])),
         }
     }
+
+    #[tool(
+        name = "get_series_categories",
+        description = "List the categories a FRED series belongs to (the reverse of \
+                       get_category_series): given a series id, where it sits in the category tree."
+    )]
+    async fn get_series_categories(
+        &self,
+        Parameters(params): Parameters<GetSeriesParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match self
+            .client
+            .series_categories(&SeriesId::new(params.series_id))
+            .await
+        {
+            Ok(categories) => {
+                let value = serde_json::json!({
+                    "count": categories.len(),
+                    "categories": categories,
+                });
+                Ok(CallToolResult::structured(value))
+            }
+            Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(
+                error.to_string(),
+            )])),
+        }
+    }
+
+    #[tool(
+        name = "get_series_release",
+        description = "Fetch the release a FRED series belongs to (the reverse of \
+                       get_release_series): given a series id, its publishing release."
+    )]
+    async fn get_series_release(
+        &self,
+        Parameters(params): Parameters<GetSeriesParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match self
+            .client
+            .series_release(&SeriesId::new(params.series_id))
+            .await
+        {
+            Ok(release) => {
+                let value = serde_json::to_value(&release)
+                    .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+                Ok(CallToolResult::structured(value))
+            }
+            Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(
+                error.to_string(),
+            )])),
+        }
+    }
 }
 
 /// Parse a `YYYY-MM-DD` date from a tool argument, mapping a bad format to an
@@ -718,6 +771,7 @@ impl ServerHandler for FredServer {
             "Query FRED (Federal Reserve Economic Data). Tools: search_series (find series by \
              text), get_series (metadata for a series id), get_observations (a series' date/value \
              observations, with optional date range, units transform, and frequency aggregation), \
+             get_series_categories and get_series_release (a series' categories / release), \
              the category tools — get_category, get_category_children (walk the category tree from \
              the root, id 0), and get_category_series (the series in a category) — the release \
              tools — get_releases (list publications), get_release, and get_release_series (the \
