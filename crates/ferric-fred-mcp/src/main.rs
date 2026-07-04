@@ -4,9 +4,10 @@
 //! library's endpoints and return the domain types as JSON. The API key comes
 //! from `FRED_API_KEY` via `Client::from_env` (ADR-0009).
 //!
-//! Tools: `search_series`, `get_series`, `get_observations`, and the category
-//! tools (`get_category`, `get_category_children`, `get_category_series`) — one
-//! per library endpoint, with typed inputs (see [`params`]).
+//! Tools: `search_series`, `get_series`, `get_observations`, the category tools
+//! (`get_category`, `get_category_children`, `get_category_series`), and the
+//! release tools (`get_releases`, `get_release`, `get_release_series`) — one per
+//! library endpoint, with typed inputs (see [`params`]).
 //!
 //! Note: over stdio, **stdout is the protocol channel** — nothing may be printed
 //! to it. Any diagnostics must go to stderr.
@@ -15,7 +16,7 @@ mod params;
 
 use anyhow::Context;
 use chrono::NaiveDate;
-use ferric_fred::{CategoryId, Client, SeriesId};
+use ferric_fred::{CategoryId, Client, ReleaseId, SeriesId};
 use rmcp::handler::server::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, ContentBlock, Implementation, ServerCapabilities, ServerInfo};
@@ -79,6 +80,35 @@ struct CategoryParams {
 struct CategorySeriesParams {
     /// The FRED category id (0 is the root of the category tree).
     category_id: u32,
+    /// Maximum number of series to return.
+    limit: Option<u32>,
+    /// Field to order results by.
+    order_by: Option<OrderByArg>,
+    /// Sort direction.
+    sort: Option<SortOrderArg>,
+}
+
+/// Input parameters for the `get_releases` tool.
+#[derive(Debug, Deserialize, JsonSchema)]
+struct GetReleasesParams {
+    /// Maximum number of releases to return.
+    limit: Option<u32>,
+    /// Sort direction by release id.
+    sort: Option<SortOrderArg>,
+}
+
+/// Input parameters for the `get_release` tool.
+#[derive(Debug, Deserialize, JsonSchema)]
+struct GetReleaseParams {
+    /// The FRED release id, e.g. 53 (Gross Domestic Product).
+    release_id: u32,
+}
+
+/// Input parameters for the `get_release_series` tool.
+#[derive(Debug, Deserialize, JsonSchema)]
+struct ReleaseSeriesParams {
+    /// The FRED release id.
+    release_id: u32,
     /// Maximum number of series to return.
     limit: Option<u32>,
     /// Field to order results by.
@@ -296,6 +326,92 @@ impl FredServer {
             )])),
         }
     }
+
+    #[tool(
+        name = "get_releases",
+        description = "List FRED data releases (publications such as \"Gross Domestic Product\"), \
+                       with pagination metadata. A browse axis parallel to categories. Supports \
+                       sort direction and a result limit."
+    )]
+    async fn get_releases(
+        &self,
+        Parameters(params): Parameters<GetReleasesParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let mut request = self.client.releases();
+        if let Some(limit) = params.limit {
+            request = request.limit(limit);
+        }
+        if let Some(sort) = params.sort {
+            request = request.sort_order(sort.into());
+        }
+
+        match request.send().await {
+            Ok(results) => {
+                let value = serde_json::to_value(&results)
+                    .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+                Ok(CallToolResult::structured(value))
+            }
+            Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(
+                error.to_string(),
+            )])),
+        }
+    }
+
+    #[tool(
+        name = "get_release",
+        description = "Fetch a FRED data release by its id (e.g. 53 = Gross Domestic Product): its \
+                       name, press-release flag, and link."
+    )]
+    async fn get_release(
+        &self,
+        Parameters(params): Parameters<GetReleaseParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match self.client.release(ReleaseId::new(params.release_id)).await {
+            Ok(release) => {
+                let value = serde_json::to_value(&release)
+                    .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+                Ok(CallToolResult::structured(value))
+            }
+            Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(
+                error.to_string(),
+            )])),
+        }
+    }
+
+    #[tool(
+        name = "get_release_series",
+        description = "List the FRED series published in a release, with pagination metadata \
+                       (total count, offset, limit). Supports ordering, sort direction, and a \
+                       result limit."
+    )]
+    async fn get_release_series(
+        &self,
+        Parameters(params): Parameters<ReleaseSeriesParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let mut request = self
+            .client
+            .release_series(ReleaseId::new(params.release_id));
+        if let Some(limit) = params.limit {
+            request = request.limit(limit);
+        }
+        if let Some(order_by) = params.order_by {
+            request = request.order_by(order_by.into());
+        }
+        if let Some(sort) = params.sort {
+            request = request.sort_order(sort.into());
+        }
+
+        match request.send().await {
+            Ok(results) => {
+                let value = serde_json::to_value(&results)
+                    .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+                Ok(CallToolResult::structured(value))
+            }
+            Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(
+                error.to_string(),
+            )])),
+        }
+    }
 }
 
 /// Parse a `YYYY-MM-DD` date from a tool argument, mapping a bad format to an
@@ -324,8 +440,10 @@ impl ServerHandler for FredServer {
             "Query FRED (Federal Reserve Economic Data). Tools: search_series (find series by \
              text), get_series (metadata for a series id), get_observations (a series' date/value \
              observations, with optional date range, units transform, and frequency aggregation), \
-             and the category tools — get_category, get_category_children (walk the category tree \
-             from the root, id 0), and get_category_series (the series in a category)."
+             the category tools — get_category, get_category_children (walk the category tree from \
+             the root, id 0), and get_category_series (the series in a category) — and the release \
+             tools — get_releases (list publications), get_release, and get_release_series (the \
+             series in a release)."
                 .to_string(),
         );
         info
@@ -409,6 +527,30 @@ mod tests {
         assert!(matches!(params.order_by, Some(OrderByArg::Popularity)));
         assert!(matches!(params.sort, Some(SortOrderArg::Desc)));
         assert!(params.limit.is_none());
+    }
+
+    #[test]
+    fn release_params_deserialize_from_arguments() {
+        let params: GetReleaseParams =
+            serde_json::from_value(serde_json::json!({"release_id": 53})).unwrap();
+        assert_eq!(params.release_id, 53);
+
+        let list: GetReleasesParams =
+            serde_json::from_value(serde_json::json!({"sort": "desc"})).unwrap();
+        assert!(matches!(list.sort, Some(SortOrderArg::Desc)));
+        assert!(list.limit.is_none());
+    }
+
+    #[test]
+    fn release_series_params_deserialize_enums() {
+        let params: ReleaseSeriesParams = serde_json::from_value(serde_json::json!({
+            "release_id": 53,
+            "order_by": "popularity"
+        }))
+        .unwrap();
+        assert_eq!(params.release_id, 53);
+        assert!(matches!(params.order_by, Some(OrderByArg::Popularity)));
+        assert!(params.sort.is_none());
     }
 
     #[test]
