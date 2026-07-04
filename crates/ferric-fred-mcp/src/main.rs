@@ -4,8 +4,9 @@
 //! library's endpoints and return the domain types as JSON. The API key comes
 //! from `FRED_API_KEY` via `Client::from_env` (ADR-0009).
 //!
-//! Tools: `search_series`, `get_series`, and `get_observations` — one per
-//! library endpoint, with typed inputs (see [`params`]).
+//! Tools: `search_series`, `get_series`, `get_observations`, and the category
+//! tools (`get_category`, `get_category_children`, `get_category_series`) — one
+//! per library endpoint, with typed inputs (see [`params`]).
 //!
 //! Note: over stdio, **stdout is the protocol channel** — nothing may be printed
 //! to it. Any diagnostics must go to stderr.
@@ -14,7 +15,7 @@ mod params;
 
 use anyhow::Context;
 use chrono::NaiveDate;
-use ferric_fred::{Client, SeriesId};
+use ferric_fred::{CategoryId, Client, SeriesId};
 use rmcp::handler::server::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, ContentBlock, Implementation, ServerCapabilities, ServerInfo};
@@ -63,6 +64,26 @@ struct GetObservationsParams {
     /// Aggregation method, used together with `frequency`.
     aggregation: Option<AggregationArg>,
     /// Sort order by date.
+    sort: Option<SortOrderArg>,
+}
+
+/// Input parameters for the `get_category` and `get_category_children` tools.
+#[derive(Debug, Deserialize, JsonSchema)]
+struct CategoryParams {
+    /// The FRED category id (0 is the root of the category tree).
+    category_id: u32,
+}
+
+/// Input parameters for the `get_category_series` tool.
+#[derive(Debug, Deserialize, JsonSchema)]
+struct CategorySeriesParams {
+    /// The FRED category id (0 is the root of the category tree).
+    category_id: u32,
+    /// Maximum number of series to return.
+    limit: Option<u32>,
+    /// Field to order results by.
+    order_by: Option<OrderByArg>,
+    /// Sort direction.
     sort: Option<SortOrderArg>,
 }
 
@@ -187,6 +208,94 @@ impl FredServer {
             )])),
         }
     }
+
+    #[tool(
+        name = "get_category",
+        description = "Fetch a FRED category by its id (0 is the root of the category tree): its \
+                       name and parent category id."
+    )]
+    async fn get_category(
+        &self,
+        Parameters(params): Parameters<CategoryParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match self
+            .client
+            .category(CategoryId::new(params.category_id))
+            .await
+        {
+            Ok(category) => {
+                let value = serde_json::to_value(&category)
+                    .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+                Ok(CallToolResult::structured(value))
+            }
+            Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(
+                error.to_string(),
+            )])),
+        }
+    }
+
+    #[tool(
+        name = "get_category_children",
+        description = "List the child categories of a FRED category (use id 0 for the top-level \
+                       categories). The primary way to walk the category tree downward."
+    )]
+    async fn get_category_children(
+        &self,
+        Parameters(params): Parameters<CategoryParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match self
+            .client
+            .category_children(CategoryId::new(params.category_id))
+            .await
+        {
+            Ok(children) => {
+                let value = serde_json::json!({
+                    "category_id": params.category_id,
+                    "count": children.len(),
+                    "children": children,
+                });
+                Ok(CallToolResult::structured(value))
+            }
+            Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(
+                error.to_string(),
+            )])),
+        }
+    }
+
+    #[tool(
+        name = "get_category_series",
+        description = "List the FRED series that belong to a category, with pagination metadata \
+                       (total count, offset, limit). Supports ordering, sort direction, and a \
+                       result limit."
+    )]
+    async fn get_category_series(
+        &self,
+        Parameters(params): Parameters<CategorySeriesParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let mut request = self
+            .client
+            .category_series(CategoryId::new(params.category_id));
+        if let Some(limit) = params.limit {
+            request = request.limit(limit);
+        }
+        if let Some(order_by) = params.order_by {
+            request = request.order_by(order_by.into());
+        }
+        if let Some(sort) = params.sort {
+            request = request.sort_order(sort.into());
+        }
+
+        match request.send().await {
+            Ok(results) => {
+                let value = serde_json::to_value(&results)
+                    .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+                Ok(CallToolResult::structured(value))
+            }
+            Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(
+                error.to_string(),
+            )])),
+        }
+    }
 }
 
 /// Parse a `YYYY-MM-DD` date from a tool argument, mapping a bad format to an
@@ -213,9 +322,10 @@ impl ServerHandler for FredServer {
         info.server_info = Implementation::new(env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
         info.instructions = Some(
             "Query FRED (Federal Reserve Economic Data). Tools: search_series (find series by \
-             text), get_series (metadata for a series id), and get_observations (a series' \
-             date/value observations, with optional date range, units transform, and frequency \
-             aggregation)."
+             text), get_series (metadata for a series id), get_observations (a series' date/value \
+             observations, with optional date range, units transform, and frequency aggregation), \
+             and the category tools — get_category, get_category_children (walk the category tree \
+             from the root, id 0), and get_category_series (the series in a category)."
                 .to_string(),
         );
         info
@@ -278,6 +388,27 @@ mod tests {
             serde_json::from_value(serde_json::json!({"series_id": "GNPCA"})).unwrap();
         assert_eq!(params.series_id, "GNPCA");
         assert!(params.start.is_none() && params.units.is_none());
+    }
+
+    #[test]
+    fn category_params_deserialize_from_arguments() {
+        let params: CategoryParams =
+            serde_json::from_value(serde_json::json!({"category_id": 125})).unwrap();
+        assert_eq!(params.category_id, 125);
+    }
+
+    #[test]
+    fn category_series_params_deserialize_enums_and_default_none() {
+        let params: CategorySeriesParams = serde_json::from_value(serde_json::json!({
+            "category_id": 13,
+            "order_by": "popularity",
+            "sort": "desc"
+        }))
+        .unwrap();
+        assert_eq!(params.category_id, 13);
+        assert!(matches!(params.order_by, Some(OrderByArg::Popularity)));
+        assert!(matches!(params.sort, Some(SortOrderArg::Desc)));
+        assert!(params.limit.is_none());
     }
 
     #[test]
