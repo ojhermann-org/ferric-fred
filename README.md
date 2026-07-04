@@ -26,8 +26,8 @@ are managed on top of that (see the ADRs).
 Early construction. The library covers the `series`, `series/observations`, and
 `series/search` endpoints; the `fred` CLI (this repo's first consumer) can
 search, show series metadata, print observations, and chart them in an
-interactive terminal UI. The `fred-mcp` server (ADR-0010) now speaks MCP over
-stdio with a first `get_series` tool; the remaining tools follow.
+interactive terminal UI. The `fred-mcp` server (ADR-0010) speaks MCP over stdio
+with three tools (`search_series`, `get_series`, `get_observations`).
 
 ## Using the CLI
 
@@ -48,6 +48,36 @@ series' observations (it accepts the same flags as `observations`); press `q`,
 Run it from the workspace with `cargo run -p ferric-fred-cli -- <args>`, and see
 `fred <command> --help` for every flag (`--units`, `--order-by`, … accept the
 FRED value sets).
+
+## Using the MCP server
+
+`fred-mcp` is an [MCP](https://modelcontextprotocol.io/) server (ADR-0010) that
+exposes FRED to MCP-capable clients over stdio. It reads `FRED_API_KEY` from the
+environment and provides three tools:
+
+| Tool | Purpose |
+|------|---------|
+| `search_series` | Find series by text (with ordering, sort, limit) |
+| `get_series` | Metadata for a series id |
+| `get_observations` | A series' observations (date range, units transform, frequency aggregation, sort, limit) |
+
+Tool results are returned as JSON (MCP structured content). Build the binary,
+then point your MCP client at it:
+
+```sh
+cargo build --release -p ferric-fred-mcp   # -> target/release/fred-mcp
+```
+
+```json
+{
+  "mcpServers": {
+    "fred": {
+      "command": "/path/to/ferric-fred/target/release/fred-mcp",
+      "env": { "FRED_API_KEY": "your-fred-api-key" }
+    }
+  }
+}
+```
 
 ## Development
 

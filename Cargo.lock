@@ -405,6 +405,7 @@ name = "ferric-fred-mcp"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "ferric-fred",
  "rmcp",
  "schemars",

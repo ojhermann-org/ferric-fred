@@ -4,13 +4,16 @@
 //! library's endpoints and return the domain types as JSON. The API key comes
 //! from `FRED_API_KEY` via `Client::from_env` (ADR-0009).
 //!
-//! This is the first slice: a single `get_series` tool, proving the SDK and the
-//! stdio handshake before the remaining tools are added.
+//! Tools: `search_series`, `get_series`, and `get_observations` — one per
+//! library endpoint, with typed inputs (see [`params`]).
 //!
 //! Note: over stdio, **stdout is the protocol channel** — nothing may be printed
 //! to it. Any diagnostics must go to stderr.
 
+mod params;
+
 use anyhow::Context;
+use chrono::NaiveDate;
 use ferric_fred::{Client, SeriesId};
 use rmcp::handler::server::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
@@ -20,11 +23,47 @@ use rmcp::{tool, tool_handler, tool_router, ErrorData, ServerHandler, ServiceExt
 use schemars::JsonSchema;
 use serde::Deserialize;
 
+use params::{AggregationArg, FrequencyArg, OrderByArg, SortOrderArg, UnitsArg};
+
 /// Input parameters for the `get_series` tool.
 #[derive(Debug, Deserialize, JsonSchema)]
 struct GetSeriesParams {
     /// The FRED series id, e.g. `GNPCA` or `UNRATE`.
     series_id: String,
+}
+
+/// Input parameters for the `search_series` tool.
+#[derive(Debug, Deserialize, JsonSchema)]
+struct SearchSeriesParams {
+    /// Words to search for, e.g. "unemployment rate".
+    text: String,
+    /// Maximum number of results to return.
+    limit: Option<u32>,
+    /// Field to order results by (default: search relevance).
+    order_by: Option<OrderByArg>,
+    /// Sort direction.
+    sort: Option<SortOrderArg>,
+}
+
+/// Input parameters for the `get_observations` tool.
+#[derive(Debug, Deserialize, JsonSchema)]
+struct GetObservationsParams {
+    /// The FRED series id, e.g. `GNPCA` or `UNRATE`.
+    series_id: String,
+    /// Earliest observation date, `YYYY-MM-DD`.
+    start: Option<String>,
+    /// Latest observation date, `YYYY-MM-DD`.
+    end: Option<String>,
+    /// Maximum number of observations to return.
+    limit: Option<u32>,
+    /// Units transformation to apply.
+    units: Option<UnitsArg>,
+    /// Frequency to aggregate observations down to.
+    frequency: Option<FrequencyArg>,
+    /// Aggregation method, used together with `frequency`.
+    aggregation: Option<AggregationArg>,
+    /// Sort order by date.
+    sort: Option<SortOrderArg>,
 }
 
 /// The MCP server state: the FRED client plus the macro-generated tool router.
@@ -66,6 +105,99 @@ impl FredServer {
             )])),
         }
     }
+
+    #[tool(
+        name = "search_series",
+        description = "Search FRED for series matching text. Returns the matching series along \
+                       with pagination metadata (total match count, offset, limit)."
+    )]
+    async fn search_series(
+        &self,
+        Parameters(params): Parameters<SearchSeriesParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let mut request = self.client.search(params.text);
+        if let Some(limit) = params.limit {
+            request = request.limit(limit);
+        }
+        if let Some(order_by) = params.order_by {
+            request = request.order_by(order_by.into());
+        }
+        if let Some(sort) = params.sort {
+            request = request.sort_order(sort.into());
+        }
+
+        match request.send().await {
+            Ok(results) => {
+                let value = serde_json::to_value(&results)
+                    .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+                Ok(CallToolResult::structured(value))
+            }
+            Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(
+                error.to_string(),
+            )])),
+        }
+    }
+
+    #[tool(
+        name = "get_observations",
+        description = "Fetch a FRED series' observations (date/value pairs). Supports an optional \
+                       date range, a units transform, aggregation to a lower frequency, sort \
+                       order, and a result limit."
+    )]
+    async fn get_observations(
+        &self,
+        Parameters(params): Parameters<GetObservationsParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let mut request = self
+            .client
+            .observations(&SeriesId::new(params.series_id.as_str()));
+        if let Some(start) = &params.start {
+            request = request.observation_start(parse_date(start, "start")?);
+        }
+        if let Some(end) = &params.end {
+            request = request.observation_end(parse_date(end, "end")?);
+        }
+        if let Some(limit) = params.limit {
+            request = request.limit(limit);
+        }
+        if let Some(units) = params.units {
+            request = request.units(units.into());
+        }
+        if let Some(frequency) = params.frequency {
+            request = request.frequency(frequency.into());
+        }
+        if let Some(aggregation) = params.aggregation {
+            request = request.aggregation_method(aggregation.into());
+        }
+        if let Some(sort) = params.sort {
+            request = request.sort_order(sort.into());
+        }
+
+        match request.send().await {
+            Ok(observations) => {
+                let value = serde_json::json!({
+                    "series_id": params.series_id,
+                    "count": observations.len(),
+                    "observations": observations,
+                });
+                Ok(CallToolResult::structured(value))
+            }
+            Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(
+                error.to_string(),
+            )])),
+        }
+    }
+}
+
+/// Parse a `YYYY-MM-DD` date from a tool argument, mapping a bad format to an
+/// `invalid_params` protocol error naming the offending field.
+fn parse_date(raw: &str, field: &str) -> Result<NaiveDate, ErrorData> {
+    NaiveDate::parse_from_str(raw, "%Y-%m-%d").map_err(|_| {
+        ErrorData::invalid_params(
+            format!("invalid `{field}` date `{raw}`, expected YYYY-MM-DD"),
+            None,
+        )
+    })
 }
 
 // Route tool calls through the cached router built once in `new()`, rather than
@@ -80,8 +212,10 @@ impl ServerHandler for FredServer {
         // rmcp's own name/version instead).
         info.server_info = Implementation::new(env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
         info.instructions = Some(
-            "Query FRED (Federal Reserve Economic Data). Use get_series to look up a \
-             series' metadata by its id (e.g. GNPCA, UNRATE)."
+            "Query FRED (Federal Reserve Economic Data). Tools: search_series (find series by \
+             text), get_series (metadata for a series id), and get_observations (a series' \
+             date/value observations, with optional date range, units transform, and frequency \
+             aggregation)."
                 .to_string(),
         );
         info
@@ -122,5 +256,36 @@ mod tests {
         let params: GetSeriesParams =
             serde_json::from_value(serde_json::json!({"series_id": "GNPCA"})).unwrap();
         assert_eq!(params.series_id, "GNPCA");
+    }
+
+    #[test]
+    fn search_params_deserialize_enums_from_fred_codes() {
+        let params: SearchSeriesParams = serde_json::from_value(serde_json::json!({
+            "text": "gdp",
+            "order_by": "popularity",
+            "sort": "desc"
+        }))
+        .unwrap();
+        assert_eq!(params.text, "gdp");
+        assert!(matches!(params.order_by, Some(OrderByArg::Popularity)));
+        assert!(matches!(params.sort, Some(SortOrderArg::Desc)));
+        assert!(params.limit.is_none());
+    }
+
+    #[test]
+    fn observation_params_optional_fields_default_to_none() {
+        let params: GetObservationsParams =
+            serde_json::from_value(serde_json::json!({"series_id": "GNPCA"})).unwrap();
+        assert_eq!(params.series_id, "GNPCA");
+        assert!(params.start.is_none() && params.units.is_none());
+    }
+
+    #[test]
+    fn parse_date_accepts_iso_and_rejects_garbage() {
+        assert_eq!(
+            parse_date("2020-01-01", "start").unwrap(),
+            NaiveDate::from_ymd_opt(2020, 1, 1).unwrap()
+        );
+        assert!(parse_date("01/2020", "start").is_err());
     }
 }
