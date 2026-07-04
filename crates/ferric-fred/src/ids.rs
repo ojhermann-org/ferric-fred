@@ -75,3 +75,38 @@ impl From<u32> for CategoryId {
         Self(id)
     }
 }
+
+/// A FRED release identifier — the numeric id of a data release (a publication
+/// such as "Gross Domestic Product").
+///
+/// A `Copy` newtype over `u32`, mirroring [`CategoryId`]; `#[serde(transparent)]`
+/// carries it as the bare integer FRED sends (ADR-0005).
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
+#[serde(transparent)]
+pub struct ReleaseId(u32);
+
+impl ReleaseId {
+    /// Wrap a numeric id as a [`ReleaseId`].
+    pub fn new(id: u32) -> Self {
+        Self(id)
+    }
+
+    /// The underlying numeric id.
+    pub fn get(self) -> u32 {
+        self.0
+    }
+}
+
+impl std::fmt::Display for ReleaseId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<u32> for ReleaseId {
+    fn from(id: u32) -> Self {
+        Self(id)
+    }
+}

@@ -2,8 +2,9 @@ use serde::de::DeserializeOwned;
 use serde::Deserialize;
 
 use crate::{
-    Category, CategoryId, CategorySeriesRequest, Error, Observation, ObservationsRequest, Result,
-    Series, SeriesId, SeriesSearchRequest, SeriesSearchResults,
+    Category, CategoryId, CategorySeriesRequest, Error, Observation, ObservationsRequest, Release,
+    ReleaseId, ReleaseSeriesRequest, ReleasesRequest, ReleasesResults, Result, Series, SeriesId,
+    SeriesSearchRequest, SeriesSearchResults,
 };
 
 /// Base URL for the FRED REST API.
@@ -220,6 +221,82 @@ impl Client {
         self.get("/category/series", &request.query_params()).await
     }
 
+    /// Begin a request listing all FRED data releases (the `fred/releases`
+    /// endpoint) — a browse axis parallel to categories.
+    ///
+    /// Returns a builder; set optional sort/paging and call
+    /// [`ReleasesRequest::send`] to run it.
+    ///
+    /// ```no_run
+    /// # async fn run(client: &ferric_fred::Client) -> ferric_fred::Result<()> {
+    /// let results = client.releases().limit(20).send().await?;
+    /// println!("{} releases", results.count);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn releases(&self) -> ReleasesRequest<'_> {
+        ReleasesRequest::new(self)
+    }
+
+    /// Run a releases request (invoked by [`ReleasesRequest::send`]).
+    pub(crate) async fn execute_releases(
+        &self,
+        request: &ReleasesRequest<'_>,
+    ) -> Result<ReleasesResults> {
+        self.get("/releases", &request.query_params()).await
+    }
+
+    /// Fetch a single release by id (the `fred/release` endpoint).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails to send, FRED returns a non-success
+    /// status, or the response body cannot be deserialized.
+    pub async fn release(&self, release_id: ReleaseId) -> Result<Release> {
+        let response: ReleaseResponse = self
+            .get("/release", &[("release_id", release_id.get().to_string())])
+            .await?;
+        response
+            .releases
+            .into_iter()
+            .next()
+            .ok_or_else(|| Error::Api {
+                status: 200,
+                code: None,
+                message: format!("FRED returned no release for id `{release_id}`"),
+            })
+    }
+
+    /// Begin a request for the series in a release (the `fred/release/series`
+    /// endpoint).
+    ///
+    /// Returns a builder; set optional ordering/paging and call
+    /// [`ReleaseSeriesRequest::send`] to run it.
+    ///
+    /// ```no_run
+    /// # async fn run(client: &ferric_fred::Client) -> ferric_fred::Result<()> {
+    /// use ferric_fred::ReleaseId;
+    /// let results = client
+    ///     .release_series(ReleaseId::new(53))
+    ///     .limit(5)
+    ///     .send()
+    ///     .await?;
+    /// println!("{} series", results.count);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn release_series(&self, release_id: ReleaseId) -> ReleaseSeriesRequest<'_> {
+        ReleaseSeriesRequest::new(self, release_id)
+    }
+
+    /// Run a release/series request (invoked by [`ReleaseSeriesRequest::send`]).
+    pub(crate) async fn execute_release_series(
+        &self,
+        request: &ReleaseSeriesRequest<'_>,
+    ) -> Result<SeriesSearchResults> {
+        self.get("/release/series", &request.query_params()).await
+    }
+
     /// GET `path` with `params` plus `api_key`/`file_type`, then deserialize the
     /// JSON body as `T`. A non-success status becomes [`Error::Api`] (or
     /// [`Error::RateLimited`]); a body that doesn't match `T` becomes
@@ -295,6 +372,14 @@ struct CategoriesResponse {
     categories: Vec<Category>,
 }
 
+/// The single-`release` response envelope. The `releases` list endpoint
+/// deserializes into [`ReleasesResults`] directly (it carries pagination);
+/// `fred/release` returns only the array.
+#[derive(Deserialize)]
+struct ReleaseResponse {
+    releases: Vec<Release>,
+}
+
 /// FRED's error response body.
 #[derive(Deserialize)]
 struct FredErrorBody {
@@ -305,7 +390,9 @@ struct FredErrorBody {
 #[cfg(test)]
 mod tests {
     use super::Client;
-    use crate::{CategoryId, Error, Frequency, OrderBy, SeasonalAdjustment, SeriesId, Units};
+    use crate::{
+        CategoryId, Error, Frequency, OrderBy, ReleaseId, SeasonalAdjustment, SeriesId, Units,
+    };
     use wiremock::matchers::{method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -547,6 +634,74 @@ mod tests {
             .send()
             .await
             .expect("category series parse");
+        assert_eq!(results.count, 1);
+        assert_eq!(results.series[0].id, SeriesId::new("GNPCA"));
+    }
+
+    #[tokio::test]
+    async fn releases_parse_with_pagination() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/releases"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"count":2,"offset":0,"limit":1000,"releases":[
+                    {"id":9,"name":"Advance Monthly Sales","press_release":false},
+                    {"id":53,"name":"Gross Domestic Product","press_release":true,"link":"http://bea.gov"}
+                ]}"#,
+            ))
+            .mount(&server)
+            .await;
+
+        let results = client_for(&server)
+            .releases()
+            .send()
+            .await
+            .expect("releases parse");
+        assert_eq!(results.count, 2);
+        assert_eq!(results.releases[1].id, ReleaseId::new(53));
+        assert_eq!(results.releases[1].link.as_deref(), Some("http://bea.gov"));
+    }
+
+    #[tokio::test]
+    async fn release_parses() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/release"))
+            .and(query_param("release_id", "53"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"releases":[{"id":53,"name":"Gross Domestic Product","press_release":true}]}"#,
+            ))
+            .mount(&server)
+            .await;
+
+        let release = client_for(&server)
+            .release(ReleaseId::new(53))
+            .await
+            .expect("release parses");
+        assert_eq!(release.id, ReleaseId::new(53));
+        assert_eq!(release.name, "Gross Domestic Product");
+        assert!(release.press_release);
+    }
+
+    #[tokio::test]
+    async fn release_series_sends_params_and_parses() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/release/series"))
+            .and(query_param("release_id", "53"))
+            .and(query_param("limit", "2"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(format!(
+                "{{\"count\":1,\"offset\":0,\"limit\":2,\"seriess\":[{SERIES_OBJECT}]}}"
+            )))
+            .mount(&server)
+            .await;
+
+        let results = client_for(&server)
+            .release_series(ReleaseId::new(53))
+            .limit(2)
+            .send()
+            .await
+            .expect("release series parse");
         assert_eq!(results.count, 1);
         assert_eq!(results.series[0].id, SeriesId::new("GNPCA"));
     }
