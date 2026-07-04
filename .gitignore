@@ -8,6 +8,11 @@ Cargo.lock.orig
 .env.*
 !.env.example
 
+# Nix / direnv
+result
+result-*
+.direnv/
+
 # Editor / OS
 .DS_Store
 *.swp

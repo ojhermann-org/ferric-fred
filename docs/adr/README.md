@@ -16,6 +16,7 @@ use them, and [`0000-adr-template.md`](0000-adr-template.md) for the template.
 | [0005](0005-domain-modelling-and-strong-typing.md) | Domain modelling & strong typing | Accepted |
 | [0006](0006-license.md) | License | Accepted |
 | [0007](0007-rust-edition-and-msrv.md) | Rust edition & MSRV policy | Accepted |
+| [0008](0008-nix-flake-dev-environment.md) | Nix flake for the development environment | Accepted |
 
 ## Backlog (proposed, not yet written)
 

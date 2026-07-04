@@ -25,6 +25,21 @@ are managed on top of that (see the ADRs).
 
 Early construction. The library comes first; the CLI and MCP server follow.
 
+## Development
+
+A Nix flake provides a reproducible toolchain (recent stable Rust via
+`oxalica/rust-overlay`, plus `cargo-nextest` and `cargo-deny`):
+
+```sh
+nix develop        # enter the dev shell
+# or, with direnv: `direnv allow` once, then it loads automatically
+```
+
+Nix is optional — the project builds with a normal Rust toolchain too. Install
+a recent stable Rust (e.g. via `rustup`) and use `cargo` as usual. Either way,
+building is plain `cargo build` / `cargo test`; Nix supplies the environment,
+not the build (see [ADR-0008](docs/adr/0008-nix-flake-dev-environment.md)).
+
 ## Architecture decisions
 
 Design decisions are recorded as ADRs in [`docs/adr/`](docs/adr/). Start with
