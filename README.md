@@ -23,15 +23,16 @@ are managed on top of that (see the ADRs).
 
 ## Status
 
-Early construction. The library covers the `series`, `series/observations`,
-`series/search`, `category` (`category`, `category/children`,
-`category/series`), `release` (`releases`, `release`, `release/series`), `source`
-(`sources`, `source`, `source/releases`), and `tag` (`tags`, `related_tags`,
-`tags/series`, `series/tags`) endpoints; the `fred` CLI (this repo's first
-consumer) can search, show series metadata, print observations, chart them in an
-interactive terminal UI, browse the category tree, releases, and sources, and
-filter series by tags (with related-tag discovery). The `fred-mcp` server
-(ADR-0010) speaks MCP over stdio with the corresponding tools.
+Early construction. The library covers the `series` endpoints (`series`,
+`series/observations`, `series/search`, `series/categories`, `series/release`,
+`series/tags`), `category` (`category`, `category/children`, `category/series`),
+`release` (`releases`, `release`, `release/series`), `source` (`sources`,
+`source`, `source/releases`), and `tag` (`tags`, `related_tags`, `tags/series`);
+the `fred` CLI (this repo's first consumer) can search, show series metadata,
+print observations, chart them in an interactive terminal UI, browse the
+category tree, releases, and sources, and filter series by tags (with
+related-tag discovery). The `fred-mcp` server (ADR-0010) speaks MCP over stdio
+with the corresponding tools.
 
 ## Using the CLI
 
@@ -56,6 +57,8 @@ fred tags --search-text quarterly --limit 5                     # browse/search 
 fred tags gdp quarterly --limit 5                               # series carrying all these tags
 fred tags gdp --related --limit 5                               # tags that co-occur with gdp
 fred series GNPCA --tags                                         # a series' own tags
+fred series GNPCA --categories                                   # the categories a series is in
+fred series GNPCA --release                                      # the release a series belongs to
 fred series GNPCA --json | jq .frequency                        # JSON output for scripting
 ```
 

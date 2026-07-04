@@ -35,6 +35,16 @@ fn help_lists_every_subcommand() {
 }
 
 #[test]
+fn series_views_are_mutually_exclusive() {
+    // --tags / --categories / --release form a clap group; caught at parse time.
+    fred()
+        .args(["series", "GNPCA", "--tags", "--categories"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("cannot be used with"));
+}
+
+#[test]
 fn source_releases_without_id_is_an_error() {
     // --releases requires a source id (clap `requires`); caught at parse time.
     fred()
@@ -283,4 +293,22 @@ fn series_tags_lists_tags() {
         .assert()
         .success()
         .stdout(predicate::str::contains("tags for GNPCA"));
+}
+
+#[test]
+#[ignore = "hits the live FRED API; requires FRED_API_KEY"]
+fn series_categories_and_release_views() {
+    let fred = || Command::cargo_bin("fred").unwrap();
+
+    fred()
+        .args(["series", "GNPCA", "--categories"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("categories for GNPCA"));
+
+    fred()
+        .args(["series", "GNPCA", "--release"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("release for GNPCA"));
 }

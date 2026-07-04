@@ -43,13 +43,21 @@ enum Command {
         #[arg(long)]
         sort: Option<SortOrderArg>,
     },
-    /// Show metadata for a single series (or, with --tags, its tags).
+    /// Show a series: its metadata by default, or a related view with a flag.
+    ///
+    /// `--tags`, `--categories`, and `--release` are mutually exclusive.
     Series {
         /// FRED series id, e.g. GNPCA.
         id: String,
-        /// List the series' tags instead of its metadata.
-        #[arg(long)]
+        /// Show the series' tags instead of its metadata.
+        #[arg(long, group = "view")]
         tags: bool,
+        /// Show the categories the series belongs to.
+        #[arg(long, group = "view")]
+        categories: bool,
+        /// Show the release the series belongs to.
+        #[arg(long, group = "view")]
+        release: bool,
     },
     /// Print a series' observations (date and value).
     Observations {
@@ -199,7 +207,12 @@ async fn main() -> Result<()> {
             order_by,
             sort,
         } => search(&client, &text, limit, order_by, sort, json).await,
-        Command::Series { id, tags } => series(&client, &id, tags, json).await,
+        Command::Series {
+            id,
+            tags,
+            categories,
+            release,
+        } => series(&client, &id, tags, categories, release, json).await,
         Command::Observations { id, options } => observations(&client, &id, &options, json).await,
         Command::Chart { id, options } => chart_command(&client, &id, &options).await,
         Command::Category {
@@ -269,7 +282,14 @@ async fn search(
     Ok(())
 }
 
-async fn series(client: &Client, id: &str, tags: bool, json: bool) -> Result<()> {
+async fn series(
+    client: &Client,
+    id: &str,
+    tags: bool,
+    categories: bool,
+    release: bool,
+    json: bool,
+) -> Result<()> {
     let series_id = SeriesId::new(id);
 
     if tags {
@@ -288,6 +308,40 @@ async fn series(client: &Client, id: &str, tags: bool, json: bool) -> Result<()>
                 "{}\t{}\t{} series",
                 tag.name, tag.group_id, tag.series_count
             );
+        }
+        return Ok(());
+    }
+
+    if categories {
+        let categories = client
+            .series_categories(&series_id)
+            .await
+            .with_context(|| format!("fetching categories for series `{id}` failed"))?;
+
+        if json {
+            return print_json(&categories);
+        }
+
+        println!("{} categories for {id}:", categories.len());
+        for category in &categories {
+            println!("{}\t{}", category.id, category.name);
+        }
+        return Ok(());
+    }
+
+    if release {
+        let release = client
+            .series_release(&series_id)
+            .await
+            .with_context(|| format!("fetching release for series `{id}` failed"))?;
+
+        if json {
+            return print_json(&release);
+        }
+
+        println!("release for {id}: {} ({})", release.name, release.id);
+        if let Some(link) = &release.link {
+            println!("  link: {link}");
         }
         return Ok(());
     }
