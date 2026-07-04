@@ -110,3 +110,38 @@ impl From<u32> for ReleaseId {
         Self(id)
     }
 }
+
+/// A FRED source identifier — the numeric id of a data source (the organization
+/// that produces a release, e.g. the Bureau of Economic Analysis).
+///
+/// A `Copy` newtype over `u32`, mirroring [`ReleaseId`]; `#[serde(transparent)]`
+/// carries it as the bare integer FRED sends (ADR-0005).
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
+#[serde(transparent)]
+pub struct SourceId(u32);
+
+impl SourceId {
+    /// Wrap a numeric id as a [`SourceId`].
+    pub fn new(id: u32) -> Self {
+        Self(id)
+    }
+
+    /// The underlying numeric id.
+    pub fn get(self) -> u32 {
+        self.0
+    }
+}
+
+impl std::fmt::Display for SourceId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<u32> for SourceId {
+    fn from(id: u32) -> Self {
+        Self(id)
+    }
+}

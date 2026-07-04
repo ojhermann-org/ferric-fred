@@ -1,7 +1,10 @@
 use crate::{Client, ReleasesResults, Result, SortOrder};
 
-/// A builder for a `releases` request, returned by [`Client::releases`]. Lists
-/// all FRED data releases, with optional sort and paging. Finish with
+/// A builder for the release-listing endpoints, returned by
+/// [`Client::releases`] (`fred/releases`, all data releases) and
+/// [`Client::source_releases`] (`fred/source/releases`, the releases of one
+/// source). Both share optional sort and paging and return [`ReleasesResults`];
+/// `source_releases` additionally carries the `source_id`. Finish with
 /// [`send`](ReleasesRequest::send).
 ///
 /// ```no_run
@@ -15,19 +18,39 @@ use crate::{Client, ReleasesResults, Result, SortOrder};
 #[must_use = "a ReleasesRequest does nothing until you call `.send()`"]
 pub struct ReleasesRequest<'a> {
     client: &'a Client,
+    /// The endpoint path, `/releases` or `/source/releases`.
+    path: &'static str,
+    /// FRED's `source_id`; required by `/source/releases`, absent for
+    /// `/releases`.
+    source_id: Option<String>,
     sort_order: Option<SortOrder>,
     limit: Option<u32>,
     offset: Option<u32>,
 }
 
 impl<'a> ReleasesRequest<'a> {
-    pub(crate) fn new(client: &'a Client) -> Self {
+    pub(crate) fn new(client: &'a Client, path: &'static str) -> Self {
         Self {
             client,
+            path,
+            source_id: None,
             sort_order: None,
             limit: None,
             offset: None,
         }
+    }
+
+    /// Construct a request for `/source/releases` filtered to one source.
+    pub(crate) fn with_source(client: &'a Client, path: &'static str, source_id: String) -> Self {
+        Self {
+            source_id: Some(source_id),
+            ..Self::new(client, path)
+        }
+    }
+
+    /// The endpoint path this request targets (used by the client to dispatch).
+    pub(crate) fn path(&self) -> &'static str {
+        self.path
     }
 
     /// Sort order of the results by release id (`sort_order`).
@@ -62,6 +85,9 @@ impl<'a> ReleasesRequest<'a> {
     /// `file_type` are added by the client, not here.
     pub(crate) fn query_params(&self) -> Vec<(&'static str, String)> {
         let mut params: Vec<(&'static str, String)> = Vec::new();
+        if let Some(source_id) = &self.source_id {
+            params.push(("source_id", source_id.clone()));
+        }
         if let Some(order) = self.sort_order {
             params.push(("sort_order", order.query_code().to_owned()));
         }

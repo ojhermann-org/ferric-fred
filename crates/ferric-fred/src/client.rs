@@ -4,7 +4,8 @@ use serde::Deserialize;
 use crate::{
     Category, CategoryId, Error, Observation, ObservationsRequest, Release, ReleaseId,
     ReleasesRequest, ReleasesResults, Result, Series, SeriesId, SeriesListRequest,
-    SeriesSearchRequest, SeriesSearchResults, TagsRequest, TagsResults,
+    SeriesSearchRequest, SeriesSearchResults, Source, SourceId, SourcesRequest, SourcesResults,
+    TagsRequest, TagsResults,
 };
 
 /// Base URL for the FRED REST API.
@@ -232,15 +233,16 @@ impl Client {
     /// # }
     /// ```
     pub fn releases(&self) -> ReleasesRequest<'_> {
-        ReleasesRequest::new(self)
+        ReleasesRequest::new(self, "/releases")
     }
 
-    /// Run a releases request (invoked by [`ReleasesRequest::send`]).
+    /// Run a releases request — `releases` or `source/releases` (invoked by
+    /// [`ReleasesRequest::send`]).
     pub(crate) async fn execute_releases(
         &self,
         request: &ReleasesRequest<'_>,
     ) -> Result<ReleasesResults> {
-        self.get("/releases", &request.query_params()).await
+        self.get(request.path(), &request.query_params()).await
     }
 
     /// Fetch a single release by id (the `fred/release` endpoint).
@@ -393,6 +395,70 @@ impl Client {
         .await
     }
 
+    /// Begin a request listing all FRED data sources (the `fred/sources`
+    /// endpoint) — the organizations that produce releases.
+    ///
+    /// Returns a builder; set optional sort/paging and call
+    /// [`SourcesRequest::send`] to run it.
+    ///
+    /// ```no_run
+    /// # async fn run(client: &ferric_fred::Client) -> ferric_fred::Result<()> {
+    /// let results = client.sources().limit(20).send().await?;
+    /// println!("{} sources", results.count);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn sources(&self) -> SourcesRequest<'_> {
+        SourcesRequest::new(self)
+    }
+
+    /// Run a sources request (invoked by [`SourcesRequest::send`]).
+    pub(crate) async fn execute_sources(
+        &self,
+        request: &SourcesRequest<'_>,
+    ) -> Result<SourcesResults> {
+        self.get("/sources", &request.query_params()).await
+    }
+
+    /// Fetch a single source by id (the `fred/source` endpoint).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails to send, FRED returns a non-success
+    /// status, or the response body cannot be deserialized.
+    pub async fn source(&self, source_id: SourceId) -> Result<Source> {
+        let response: SourceResponse = self
+            .get("/source", &[("source_id", source_id.get().to_string())])
+            .await?;
+        response
+            .sources
+            .into_iter()
+            .next()
+            .ok_or_else(|| Error::Api {
+                status: 200,
+                code: None,
+                message: format!("FRED returned no source for id `{source_id}`"),
+            })
+    }
+
+    /// Begin a request for the releases produced by a source (the
+    /// `fred/source/releases` endpoint).
+    ///
+    /// Returns a [`ReleasesRequest`] builder; set optional sort/paging and call
+    /// [`send`](ReleasesRequest::send) to run it.
+    ///
+    /// ```no_run
+    /// # async fn run(client: &ferric_fred::Client) -> ferric_fred::Result<()> {
+    /// use ferric_fred::SourceId;
+    /// let results = client.source_releases(SourceId::new(18)).limit(5).send().await?;
+    /// println!("{} releases", results.count);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn source_releases(&self, source_id: SourceId) -> ReleasesRequest<'_> {
+        ReleasesRequest::with_source(self, "/source/releases", source_id.get().to_string())
+    }
+
     /// GET `path` with `params` plus `api_key`/`file_type`, then deserialize the
     /// JSON body as `T`. A non-success status becomes [`Error::Api`] (or
     /// [`Error::RateLimited`]); a body that doesn't match `T` becomes
@@ -476,6 +542,13 @@ struct ReleaseResponse {
     releases: Vec<Release>,
 }
 
+/// The single-`source` response envelope (the `sources` list endpoint
+/// deserializes into [`SourcesResults`] directly).
+#[derive(Deserialize)]
+struct SourceResponse {
+    sources: Vec<Source>,
+}
+
 /// FRED's error response body.
 #[derive(Deserialize)]
 struct FredErrorBody {
@@ -487,7 +560,8 @@ struct FredErrorBody {
 mod tests {
     use super::Client;
     use crate::{
-        CategoryId, Error, Frequency, OrderBy, ReleaseId, SeasonalAdjustment, SeriesId, Units,
+        CategoryId, Error, Frequency, OrderBy, ReleaseId, SeasonalAdjustment, SeriesId, SourceId,
+        Units,
     };
     use wiremock::matchers::{method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -897,5 +971,75 @@ mod tests {
         assert_eq!(results.count, 2);
         assert_eq!(results.tags[0].name, "gnp");
         assert!(results.tags[1].notes.is_none());
+    }
+
+    #[tokio::test]
+    async fn sources_parse_with_pagination() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/sources"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"count":2,"offset":0,"limit":1000,"sources":[
+                    {"id":1,"name":"Board of Governors of the Federal Reserve System (US)"},
+                    {"id":18,"name":"U.S. Bureau of Economic Analysis","link":"http://bea.gov"}
+                ]}"#,
+            ))
+            .mount(&server)
+            .await;
+
+        let results = client_for(&server)
+            .sources()
+            .send()
+            .await
+            .expect("sources parse");
+        assert_eq!(results.count, 2);
+        assert_eq!(results.sources[1].id, SourceId::new(18));
+        assert_eq!(results.sources[1].link.as_deref(), Some("http://bea.gov"));
+    }
+
+    #[tokio::test]
+    async fn source_parses() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/source"))
+            .and(query_param("source_id", "18"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"sources":[{"id":18,"name":"U.S. Bureau of Economic Analysis","link":"http://bea.gov"}]}"#,
+            ))
+            .mount(&server)
+            .await;
+
+        let source = client_for(&server)
+            .source(SourceId::new(18))
+            .await
+            .expect("source parses");
+        assert_eq!(source.id, SourceId::new(18));
+        assert_eq!(source.name, "U.S. Bureau of Economic Analysis");
+    }
+
+    #[tokio::test]
+    async fn source_releases_send_source_id_and_parse() {
+        let server = MockServer::start().await;
+        // The source_id reaches `/source/releases`, which returns releases.
+        Mock::given(method("GET"))
+            .and(path("/source/releases"))
+            .and(query_param("source_id", "18"))
+            .and(query_param("limit", "2"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"count":1,"offset":0,"limit":2,"releases":[
+                    {"id":53,"name":"Gross Domestic Product","press_release":true}
+                ]}"#,
+            ))
+            .mount(&server)
+            .await;
+
+        let results = client_for(&server)
+            .source_releases(SourceId::new(18))
+            .limit(2)
+            .send()
+            .await
+            .expect("source/releases parse");
+        assert_eq!(results.count, 1);
+        assert_eq!(results.releases[0].id, ReleaseId::new(53));
     }
 }
