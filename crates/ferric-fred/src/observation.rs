@@ -1,5 +1,5 @@
 use chrono::NaiveDate;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 
 /// A single observation in a FRED series: a calendar date and its value.
 ///
@@ -7,7 +7,10 @@ use serde::{Deserialize, Deserializer};
 /// sentinel `"."`, which maps to `None`. Any other value parses to `Some(f64)`;
 /// a non-`"."` value that fails to parse is a deserialization error, not a
 /// silent `None` (see ADR-0004 and ADR-0005).
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+///
+/// On *serialization* the value is emitted as a JSON number or `null` — typed
+/// JSON for consumers, not FRED's stringly-typed `"."` wire format.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Observation {
     /// The observation date. FRED dates are calendar dates with no time or zone,
     /// which [`NaiveDate`] models exactly.
@@ -57,5 +60,26 @@ mod tests {
         let parsed: Result<Observation, _> =
             serde_json::from_str(r#"{"date":"1929-01-01","value":"not a number"}"#);
         assert!(parsed.is_err());
+    }
+
+    #[test]
+    fn serializes_value_as_number_or_null() {
+        let present = Observation {
+            date: NaiveDate::from_ymd_opt(1929, 1, 1).unwrap(),
+            value: Some(1065.9),
+        };
+        assert_eq!(
+            serde_json::to_value(&present).unwrap(),
+            serde_json::json!({"date": "1929-01-01", "value": 1065.9})
+        );
+
+        let missing = Observation {
+            date: NaiveDate::from_ymd_opt(1930, 1, 1).unwrap(),
+            value: None,
+        };
+        assert_eq!(
+            serde_json::to_value(&missing).unwrap(),
+            serde_json::json!({"date": "1930-01-01", "value": null})
+        );
     }
 }

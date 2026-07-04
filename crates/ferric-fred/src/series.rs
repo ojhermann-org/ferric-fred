@@ -1,5 +1,5 @@
 use chrono::NaiveDate;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{Frequency, SeasonalAdjustment, SeriesId};
 
@@ -9,7 +9,7 @@ use crate::{Frequency, SeasonalAdjustment, SeriesId};
 /// and ignored on the wire (ADR-0005). `last_updated` is kept as FRED's raw
 /// string for now — FRED encodes it with a non-standard timezone offset (e.g.
 /// `2024-03-28 07:56:03-05`); a typed datetime is a later refinement.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Series {
     /// The series identifier.
     pub id: SeriesId,
@@ -48,10 +48,11 @@ pub struct Series {
 /// A page of `series/search` results: the matching series plus FRED's
 /// pagination metadata. `count` is the total number of matches across all
 /// pages, not just this one — use it with `offset`/`limit` to page.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SeriesSearchResults {
-    /// The matching series on this page. (FRED names the array `seriess`.)
-    #[serde(rename = "seriess")]
+    /// The matching series on this page. FRED names the array `seriess` (sic) on
+    /// the wire; we read that but emit the correctly-spelled `series` on output.
+    #[serde(rename(deserialize = "seriess", serialize = "series"))]
     pub series: Vec<Series>,
 
     /// Total number of matches across all pages.
@@ -144,5 +145,25 @@ mod tests {
         assert_eq!(results.limit, 1000);
         assert_eq!(results.series.len(), 1);
         assert_eq!(results.series[0].id, SeriesId::new("GNPCA"));
+    }
+
+    #[test]
+    fn serializes_with_typed_enum_labels_and_clean_keys() {
+        let series: Series = serde_json::from_str(GNPCA_JSON).unwrap();
+        let value = serde_json::to_value(&series).unwrap();
+        assert_eq!(value["id"], "GNPCA");
+        assert_eq!(value["frequency"], "Annual");
+        assert_eq!(value["seasonal_adjustment"], "Not Seasonally Adjusted");
+
+        let results = SeriesSearchResults {
+            series: vec![series],
+            count: 1,
+            offset: 0,
+            limit: 1,
+        };
+        let results_value = serde_json::to_value(&results).unwrap();
+        // The output uses the correctly-spelled `series`, not FRED's `seriess`.
+        assert!(results_value.get("series").is_some());
+        assert!(results_value.get("seriess").is_none());
     }
 }

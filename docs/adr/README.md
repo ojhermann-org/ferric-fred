@@ -18,7 +18,7 @@ use them, and [`0000-adr-template.md`](0000-adr-template.md) for the template.
 | [0007](0007-rust-edition-and-msrv.md) | Rust edition & MSRV policy | Accepted |
 | [0008](0008-nix-flake-dev-environment.md) | Nix flake for the development environment | Accepted (direnv wiring refined by 0009) |
 | [0009](0009-secret-management-infisical-direnv.md) | Secret management via Infisical + direnv | Accepted |
-| [0010](0010-mcp-server-design.md) | MCP server design | Proposed |
+| [0010](0010-mcp-server-design.md) | MCP server design | Accepted |
 
 ## Backlog (proposed, not yet written)
 

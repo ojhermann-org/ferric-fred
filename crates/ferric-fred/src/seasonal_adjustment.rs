@@ -1,6 +1,6 @@
 use std::fmt;
 
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// Whether, and how, a FRED series is seasonally adjusted.
 ///
@@ -59,6 +59,17 @@ impl<'de> Deserialize<'de> for SeasonalAdjustment {
     }
 }
 
+impl Serialize for SeasonalAdjustment {
+    /// Serializes as FRED's long-form label — symmetric with [`Deserialize`], so
+    /// the value round-trips.
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.label())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -81,6 +92,14 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<SeasonalAdjustment>("\"Smoothed\"").unwrap(),
             SeasonalAdjustment::Other("Smoothed".to_owned())
+        );
+    }
+
+    #[test]
+    fn serializes_to_its_label() {
+        assert_eq!(
+            serde_json::to_string(&SeasonalAdjustment::SeasonallyAdjustedAnnualRate).unwrap(),
+            "\"Seasonally Adjusted Annual Rate\""
         );
     }
 }

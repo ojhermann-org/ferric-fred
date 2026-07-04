@@ -1,6 +1,6 @@
 # ADR-0010: MCP server design
 
-- **Status:** Proposed <!-- Proposed | Accepted | Deprecated | Superseded by ADR-XXXX -->
+- **Status:** Accepted <!-- Proposed | Accepted | Deprecated | Superseded by ADR-XXXX -->
 - **Date:** 2026-07-04
 - **Deciders:** Project owner
 

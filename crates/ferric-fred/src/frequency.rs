@@ -1,6 +1,6 @@
 use std::fmt;
 
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// The native reporting frequency of a FRED series.
 ///
@@ -96,6 +96,17 @@ impl<'de> Deserialize<'de> for Frequency {
     }
 }
 
+impl Serialize for Frequency {
+    /// Serializes as FRED's long-form label — symmetric with [`Deserialize`], so
+    /// the value round-trips.
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.label())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -130,5 +141,17 @@ mod tests {
         assert_eq!(Frequency::Monthly.query_code(), "m");
         assert_eq!(Frequency::Semiannual.query_code(), "sa");
         assert_eq!(Frequency::Daily.query_code(), "d");
+    }
+
+    #[test]
+    fn serializes_to_its_label_and_round_trips() {
+        assert_eq!(
+            serde_json::to_string(&Frequency::Monthly).unwrap(),
+            "\"Monthly\""
+        );
+        let other = Frequency::Other("Weekly, Ending Friday".to_owned());
+        let json = serde_json::to_string(&other).unwrap();
+        assert_eq!(json, "\"Weekly, Ending Friday\"");
+        assert_eq!(serde_json::from_str::<Frequency>(&json).unwrap(), other);
     }
 }
