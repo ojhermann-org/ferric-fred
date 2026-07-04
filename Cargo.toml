@@ -31,6 +31,9 @@ ratatui = "0.29"
 # on its stdout/stderr and exit status.
 assert_cmd = "2"
 predicates = "3"
+# Library HTTP mocking (dev-only): a local mock server for offline endpoint tests
+# (ADR-0011).
+wiremock = "0.6"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

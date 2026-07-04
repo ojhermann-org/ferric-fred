@@ -35,6 +35,20 @@ impl Client {
         })
     }
 
+    /// Build a client pointed at a custom base URL. A test seam for aiming the
+    /// client at a local mock HTTP server (ADR-0011); deliberately not public.
+    #[cfg(test)]
+    pub(crate) fn with_base_url(
+        api_key: impl Into<String>,
+        base_url: impl Into<String>,
+    ) -> Result<Self> {
+        Ok(Self {
+            http: reqwest::Client::builder().build()?,
+            api_key: api_key.into(),
+            base_url: base_url.into(),
+        })
+    }
+
     /// Build a client, reading the API key from the `FRED_API_KEY` environment
     /// variable.
     ///
@@ -208,4 +222,185 @@ struct SeriesResponse {
 struct FredErrorBody {
     error_code: Option<u32>,
     error_message: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Client;
+    use crate::{Error, Frequency, SeasonalAdjustment, SeriesId, Units};
+    use wiremock::matchers::{method, path, query_param};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    /// A representative `seriess[0]` object, reused across the response bodies.
+    const SERIES_OBJECT: &str = r#"{
+        "id": "GNPCA",
+        "title": "Real Gross National Product",
+        "observation_start": "1929-01-01",
+        "observation_end": "2023-01-01",
+        "frequency": "Annual",
+        "units": "Billions of Chained 2017 Dollars",
+        "seasonal_adjustment": "Not Seasonally Adjusted",
+        "last_updated": "2024-03-28 07:56:03-05",
+        "popularity": 76,
+        "notes": "BEA Account Code: A001RX"
+    }"#;
+
+    fn client_for(server: &MockServer) -> Client {
+        Client::with_base_url("test-key", server.uri()).expect("client builds")
+    }
+
+    #[tokio::test]
+    async fn series_parses_metadata() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/series"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(format!("{{\"seriess\":[{SERIES_OBJECT}]}}")),
+            )
+            .mount(&server)
+            .await;
+
+        let series = client_for(&server)
+            .series(&SeriesId::new("GNPCA"))
+            .await
+            .expect("series parses");
+        assert_eq!(series.id, SeriesId::new("GNPCA"));
+        assert_eq!(series.frequency, Frequency::Annual);
+        assert_eq!(
+            series.seasonal_adjustment,
+            SeasonalAdjustment::NotSeasonallyAdjusted
+        );
+        assert_eq!(series.popularity, 76);
+    }
+
+    #[tokio::test]
+    async fn observations_parse_missing_and_present_values() {
+        let server = MockServer::start().await;
+        let body = r#"{"observations":[
+            {"date":"1930-01-01","value":"."},
+            {"date":"1929-01-01","value":"1065.9"}
+        ]}"#;
+        Mock::given(method("GET"))
+            .and(path("/series/observations"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(body))
+            .mount(&server)
+            .await;
+
+        let observations = client_for(&server)
+            .observations(&SeriesId::new("GNPCA"))
+            .send()
+            .await
+            .expect("observations parse");
+        assert_eq!(observations.len(), 2);
+        assert_eq!(observations[0].value, None); // the "." sentinel
+        assert_eq!(observations[1].value, Some(1065.9));
+    }
+
+    #[tokio::test]
+    async fn search_parses_results_with_pagination() {
+        let server = MockServer::start().await;
+        let body =
+            format!("{{\"count\":1,\"offset\":0,\"limit\":1000,\"seriess\":[{SERIES_OBJECT}]}}");
+        Mock::given(method("GET"))
+            .and(path("/series/search"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(body))
+            .mount(&server)
+            .await;
+
+        let results = client_for(&server)
+            .search("real gnp")
+            .send()
+            .await
+            .expect("search parses");
+        assert_eq!(results.count, 1);
+        assert_eq!(results.series.len(), 1);
+        assert_eq!(results.series[0].id, SeriesId::new("GNPCA"));
+    }
+
+    #[tokio::test]
+    async fn error_status_with_body_maps_to_api_error() {
+        let server = MockServer::start().await;
+        let body = r#"{"error_code":400,"error_message":"Bad Request. Invalid value for variable series_id."}"#;
+        Mock::given(method("GET"))
+            .and(path("/series"))
+            .respond_with(ResponseTemplate::new(400).set_body_string(body))
+            .mount(&server)
+            .await;
+
+        let error = client_for(&server)
+            .series(&SeriesId::new("BAD"))
+            .await
+            .expect_err("a 400 should be an API error");
+        match error {
+            Error::Api {
+                status,
+                code,
+                message,
+            } => {
+                assert_eq!(status, 400);
+                assert_eq!(code, Some(400));
+                assert!(message.contains("Invalid value"), "message was {message:?}");
+            }
+            other => panic!("expected Error::Api, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn too_many_requests_maps_to_rate_limited() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/series"))
+            .respond_with(ResponseTemplate::new(429))
+            .mount(&server)
+            .await;
+
+        let error = client_for(&server)
+            .series(&SeriesId::new("GNPCA"))
+            .await
+            .expect_err("a 429 should be rate-limited");
+        assert!(matches!(error, Error::RateLimited { .. }), "got {error:?}");
+    }
+
+    #[tokio::test]
+    async fn malformed_body_maps_to_deserialize_error() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/series"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"unexpected":true}"#))
+            .mount(&server)
+            .await;
+
+        let error = client_for(&server)
+            .series(&SeriesId::new("GNPCA"))
+            .await
+            .expect_err("an unexpected body should fail to deserialize");
+        assert!(matches!(error, Error::Deserialize(_)), "got {error:?}");
+    }
+
+    #[tokio::test]
+    async fn request_carries_api_key_file_type_and_params() {
+        let server = MockServer::start().await;
+        // This mock only matches when every expected query parameter is present;
+        // an unmatched request 404s and the call fails. So a *successful* call
+        // proves the client sent api_key, file_type, and the builder's params.
+        Mock::given(method("GET"))
+            .and(path("/series/observations"))
+            .and(query_param("api_key", "test-key"))
+            .and(query_param("file_type", "json"))
+            .and(query_param("units", "pch"))
+            .and(query_param("limit", "5"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"observations":[]}"#))
+            .mount(&server)
+            .await;
+
+        let observations = client_for(&server)
+            .observations(&SeriesId::new("GNPCA"))
+            .units(Units::PercentChange)
+            .limit(5)
+            .send()
+            .await
+            .expect("request with the expected params should match the mock");
+        assert!(observations.is_empty());
+    }
 }

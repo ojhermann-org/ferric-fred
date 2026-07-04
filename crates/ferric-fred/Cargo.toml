@@ -13,9 +13,11 @@ thiserror = { workspace = true }
 chrono = { workspace = true }
 
 [dev-dependencies]
-# `rt` + `macros` give `#[tokio::test]` a current-thread runtime for the live
-# integration test; the library itself pulls no tokio features of its own.
+# `rt` + `macros` give `#[tokio::test]` a current-thread runtime for the live and
+# HTTP-mocked tests; the library itself pulls no tokio features of its own.
 tokio = { workspace = true, features = ["rt", "macros"] }
+# Local mock HTTP server for offline endpoint tests (ADR-0011).
+wiremock = { workspace = true }
 
 [lints]
 workspace = true
