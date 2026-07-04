@@ -28,7 +28,9 @@ where
     if raw == "." {
         return Ok(None);
     }
-    raw.parse::<f64>().map(Some).map_err(serde::de::Error::custom)
+    raw.parse::<f64>()
+        .map(Some)
+        .map_err(serde::de::Error::custom)
 }
 
 #[cfg(test)]
