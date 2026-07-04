@@ -106,28 +106,39 @@ enum Command {
         #[arg(long)]
         sort: Option<SortOrderArg>,
     },
-    /// Browse/search FRED tags, or find series carrying a set of tags.
+    /// Browse/search FRED tags, find series by tags, or find related tags.
     ///
     /// With no tag names, browses the tag vocabulary (use `--search-text` to
     /// filter). With one or more tag names, lists the series carrying all of
-    /// them.
+    /// them — or, with `--related`, the tags that co-occur with them.
     Tags {
-        /// Tag names. Give one or more to list series carrying all of them;
-        /// omit to browse/search the tag vocabulary.
+        /// Tag names. Give one or more to list series carrying all of them (or,
+        /// with --related, related tags); omit to browse the tag vocabulary.
         names: Vec<String>,
-        /// With no names: restrict the tag list to those matching this text.
-        #[arg(long)]
-        search_text: Option<String>,
-        /// Maximum number of results.
-        #[arg(long)]
-        limit: Option<u32>,
-        /// With tag names: field to order the matching series by.
-        #[arg(long)]
-        order_by: Option<OrderByArg>,
-        /// Sort order.
-        #[arg(long)]
-        sort: Option<SortOrderArg>,
+        #[command(flatten)]
+        options: TagsOptions,
     },
+}
+
+/// Options for the `tags` command.
+#[derive(Args)]
+struct TagsOptions {
+    /// With tag names: list the tags that co-occur with them, instead of the
+    /// matching series.
+    #[arg(long)]
+    related: bool,
+    /// When browsing or with --related: restrict tags to those matching this text.
+    #[arg(long)]
+    search_text: Option<String>,
+    /// Maximum number of results.
+    #[arg(long)]
+    limit: Option<u32>,
+    /// With tag names (series mode): field to order the matching series by.
+    #[arg(long)]
+    order_by: Option<OrderByArg>,
+    /// Sort order.
+    #[arg(long)]
+    sort: Option<SortOrderArg>,
 }
 
 /// Options controlling an observations query.
@@ -188,13 +199,7 @@ async fn main() -> Result<()> {
             order_by,
             sort,
         } => release(&client, id, series, limit, order_by, sort, json).await,
-        Command::Tags {
-            names,
-            search_text,
-            limit,
-            order_by,
-            sort,
-        } => tags(&client, names, search_text, limit, order_by, sort, json).await,
+        Command::Tags { names, options } => tags(&client, names, &options, json).await,
     }
 }
 
@@ -434,25 +439,37 @@ async fn release(
     Ok(())
 }
 
+/// Print a page of tags as `name<TAB>group<TAB>N series` lines.
+fn print_tag_lines(tags: &[ferric_fred::Tag]) {
+    for tag in tags {
+        println!(
+            "{}\t{}\t{} series",
+            tag.name, tag.group_id, tag.series_count
+        );
+    }
+}
+
 async fn tags(
     client: &Client,
     names: Vec<String>,
-    search_text: Option<String>,
-    limit: Option<u32>,
-    order_by: Option<OrderByArg>,
-    sort: Option<SortOrderArg>,
+    options: &TagsOptions,
     json: bool,
 ) -> Result<()> {
     if names.is_empty() {
+        anyhow::ensure!(
+            !options.related,
+            "--related needs one or more tag names, e.g. `fred tags gdp --related`"
+        );
+
         // Browse / search the tag vocabulary.
         let mut request = client.tags();
-        if let Some(text) = search_text {
-            request = request.search_text(text);
+        if let Some(text) = &options.search_text {
+            request = request.search_text(text.clone());
         }
-        if let Some(limit) = limit {
+        if let Some(limit) = options.limit {
             request = request.limit(limit);
         }
-        if let Some(sort) = sort {
+        if let Some(sort) = options.sort {
             request = request.sort_order(sort.into());
         }
 
@@ -463,24 +480,46 @@ async fn tags(
         }
 
         println!("{} tags:", results.count);
-        for tag in &results.tags {
-            println!(
-                "{}\t{}\t{} series",
-                tag.name, tag.group_id, tag.series_count
-            );
+        print_tag_lines(&results.tags);
+        return Ok(());
+    }
+
+    if options.related {
+        // Tags that co-occur with the given tags.
+        let mut request = client.related_tags(&names);
+        if let Some(text) = &options.search_text {
+            request = request.search_text(text.clone());
         }
+        if let Some(limit) = options.limit {
+            request = request.limit(limit);
+        }
+        if let Some(sort) = options.sort {
+            request = request.sort_order(sort.into());
+        }
+
+        let results = request
+            .send()
+            .await
+            .with_context(|| format!("fetching tags related to {names:?} failed"))?;
+
+        if json {
+            return print_json(&results);
+        }
+
+        println!("{} tags related to {}:", results.count, names.join(", "));
+        print_tag_lines(&results.tags);
         return Ok(());
     }
 
     // Series carrying all of the given tags.
     let mut request = client.tags_series(&names);
-    if let Some(limit) = limit {
+    if let Some(limit) = options.limit {
         request = request.limit(limit);
     }
-    if let Some(order_by) = order_by {
+    if let Some(order_by) = options.order_by {
         request = request.order_by(order_by.into());
     }
-    if let Some(sort) = sort {
+    if let Some(sort) = options.sort {
         request = request.sort_order(sort.into());
     }
 

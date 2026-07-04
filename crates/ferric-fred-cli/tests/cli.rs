@@ -218,6 +218,24 @@ fn tags_browse_search_and_series() {
         .assert()
         .success()
         .stdout(predicate::str::contains("tagged gdp, quarterly"));
+
+    fred()
+        .args(["tags", "gdp", "--related", "--limit", "3"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("tags related to gdp"));
+}
+
+#[test]
+#[ignore = "needs FRED_API_KEY for client init, though it fails before any request"]
+fn tags_related_without_names_is_an_error() {
+    // The --related guard fires after the client is built, so a key must be set.
+    Command::cargo_bin("fred")
+        .unwrap()
+        .args(["tags", "--related"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("needs one or more tag names"));
 }
 
 #[test]
