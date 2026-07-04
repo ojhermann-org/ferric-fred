@@ -21,7 +21,6 @@
 
 mod aggregation_method;
 mod category;
-mod category_series_request;
 mod client;
 mod error;
 mod frequency;
@@ -30,21 +29,19 @@ mod observation;
 mod observations_request;
 mod order_by;
 mod release;
-mod release_series_request;
 mod releases_request;
 mod search_type;
 mod seasonal_adjustment;
 mod series;
+mod series_list_request;
 mod series_search_request;
 mod sort_order;
 mod tag;
 mod tags_request;
-mod tags_series_request;
 mod units;
 
 pub use aggregation_method::AggregationMethod;
 pub use category::Category;
-pub use category_series_request::CategorySeriesRequest;
 pub use client::Client;
 pub use error::Error;
 pub use frequency::Frequency;
@@ -53,16 +50,15 @@ pub use observation::Observation;
 pub use observations_request::ObservationsRequest;
 pub use order_by::OrderBy;
 pub use release::{Release, ReleasesResults};
-pub use release_series_request::ReleaseSeriesRequest;
 pub use releases_request::ReleasesRequest;
 pub use search_type::SearchType;
 pub use seasonal_adjustment::SeasonalAdjustment;
 pub use series::{Series, SeriesSearchResults};
+pub use series_list_request::SeriesListRequest;
 pub use series_search_request::SeriesSearchRequest;
 pub use sort_order::SortOrder;
 pub use tag::{Tag, TagsResults};
 pub use tags_request::TagsRequest;
-pub use tags_series_request::TagsSeriesRequest;
 pub use units::Units;
 
 /// A `Result` whose error type is this crate's [`Error`].

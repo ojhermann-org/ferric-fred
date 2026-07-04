@@ -2,9 +2,9 @@ use serde::de::DeserializeOwned;
 use serde::Deserialize;
 
 use crate::{
-    Category, CategoryId, CategorySeriesRequest, Error, Observation, ObservationsRequest, Release,
-    ReleaseId, ReleaseSeriesRequest, ReleasesRequest, ReleasesResults, Result, Series, SeriesId,
-    SeriesSearchRequest, SeriesSearchResults, TagsRequest, TagsResults, TagsSeriesRequest,
+    Category, CategoryId, Error, Observation, ObservationsRequest, Release, ReleaseId,
+    ReleasesRequest, ReleasesResults, Result, Series, SeriesId, SeriesListRequest,
+    SeriesSearchRequest, SeriesSearchResults, TagsRequest, TagsResults,
 };
 
 /// Base URL for the FRED REST API.
@@ -194,8 +194,8 @@ impl Client {
     /// Begin a request for the series in a category (the `fred/category/series`
     /// endpoint).
     ///
-    /// Returns a builder; set optional ordering/paging and call
-    /// [`CategorySeriesRequest::send`] to run it.
+    /// Returns a [`SeriesListRequest`] builder; set optional ordering/paging and
+    /// call [`send`](SeriesListRequest::send) to run it.
     ///
     /// ```no_run
     /// # async fn run(client: &ferric_fred::Client) -> ferric_fred::Result<()> {
@@ -209,16 +209,13 @@ impl Client {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn category_series(&self, category_id: CategoryId) -> CategorySeriesRequest<'_> {
-        CategorySeriesRequest::new(self, category_id)
-    }
-
-    /// Run a category/series request (invoked by [`CategorySeriesRequest::send`]).
-    pub(crate) async fn execute_category_series(
-        &self,
-        request: &CategorySeriesRequest<'_>,
-    ) -> Result<SeriesSearchResults> {
-        self.get("/category/series", &request.query_params()).await
+    pub fn category_series(&self, category_id: CategoryId) -> SeriesListRequest<'_> {
+        SeriesListRequest::new(
+            self,
+            "/category/series",
+            "category_id",
+            category_id.get().to_string(),
+        )
     }
 
     /// Begin a request listing all FRED data releases (the `fred/releases`
@@ -270,8 +267,8 @@ impl Client {
     /// Begin a request for the series in a release (the `fred/release/series`
     /// endpoint).
     ///
-    /// Returns a builder; set optional ordering/paging and call
-    /// [`ReleaseSeriesRequest::send`] to run it.
+    /// Returns a [`SeriesListRequest`] builder; set optional ordering/paging and
+    /// call [`send`](SeriesListRequest::send) to run it.
     ///
     /// ```no_run
     /// # async fn run(client: &ferric_fred::Client) -> ferric_fred::Result<()> {
@@ -285,16 +282,13 @@ impl Client {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn release_series(&self, release_id: ReleaseId) -> ReleaseSeriesRequest<'_> {
-        ReleaseSeriesRequest::new(self, release_id)
-    }
-
-    /// Run a release/series request (invoked by [`ReleaseSeriesRequest::send`]).
-    pub(crate) async fn execute_release_series(
-        &self,
-        request: &ReleaseSeriesRequest<'_>,
-    ) -> Result<SeriesSearchResults> {
-        self.get("/release/series", &request.query_params()).await
+    pub fn release_series(&self, release_id: ReleaseId) -> SeriesListRequest<'_> {
+        SeriesListRequest::new(
+            self,
+            "/release/series",
+            "release_id",
+            release_id.get().to_string(),
+        )
     }
 
     /// Begin a request to browse or search FRED's tag vocabulary (the
@@ -323,8 +317,8 @@ impl Client {
     /// `fred/tags/series` endpoint) — faceted discovery.
     ///
     /// Accepts any iterable of tag names (they are joined with `;` for FRED).
-    /// Returns a builder; set optional ordering/paging and call
-    /// [`TagsSeriesRequest::send`] to run it.
+    /// Returns a [`SeriesListRequest`] builder; set optional ordering/paging and
+    /// call [`send`](SeriesListRequest::send) to run it.
     ///
     /// ```no_run
     /// # async fn run(client: &ferric_fred::Client) -> ferric_fred::Result<()> {
@@ -333,7 +327,7 @@ impl Client {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn tags_series<I, S>(&self, tag_names: I) -> TagsSeriesRequest<'_>
+    pub fn tags_series<I, S>(&self, tag_names: I) -> SeriesListRequest<'_>
     where
         I: IntoIterator<Item = S>,
         S: AsRef<str>,
@@ -343,15 +337,16 @@ impl Client {
             .map(|name| name.as_ref().to_owned())
             .collect::<Vec<_>>()
             .join(";");
-        TagsSeriesRequest::new(self, joined)
+        SeriesListRequest::new(self, "/tags/series", "tag_names", joined)
     }
 
-    /// Run a tags/series request (invoked by [`TagsSeriesRequest::send`]).
-    pub(crate) async fn execute_tags_series(
+    /// Run a series-list request — `category/series`, `release/series`, or
+    /// `tags/series` (invoked by [`SeriesListRequest::send`]).
+    pub(crate) async fn execute_series_list(
         &self,
-        request: &TagsSeriesRequest<'_>,
+        request: &SeriesListRequest<'_>,
     ) -> Result<SeriesSearchResults> {
-        self.get("/tags/series", &request.query_params()).await
+        self.get(request.path(), &request.query_params()).await
     }
 
     /// Fetch the tags attached to a series (the `fred/series/tags` endpoint) —

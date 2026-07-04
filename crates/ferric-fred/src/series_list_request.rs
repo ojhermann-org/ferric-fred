@@ -1,39 +1,53 @@
-use crate::{CategoryId, Client, OrderBy, Result, SeriesSearchResults, SortOrder};
+use crate::{Client, OrderBy, Result, SeriesSearchResults, SortOrder};
 
-/// A builder for a `category/series` request, returned by
-/// [`Client::category_series`]. Lists the series belonging to a category, with
-/// optional ordering and paging. Finish with
-/// [`send`](CategorySeriesRequest::send).
+/// A builder for the FRED endpoints that return a page of series filtered by a
+/// single facet: `category/series`, `release/series`, and `tags/series`. They
+/// share the same optional ordering and paging and all return
+/// [`SeriesSearchResults`]; they differ only in the endpoint path and the one
+/// facet parameter (`category_id` / `release_id` / `tag_names`).
+///
+/// Construct one via [`Client::category_series`], [`Client::release_series`], or
+/// [`Client::tags_series`]; finish with [`send`](SeriesListRequest::send).
 ///
 /// ```no_run
 /// # async fn run(client: &ferric_fred::Client) -> ferric_fred::Result<()> {
-/// use ferric_fred::{CategoryId, OrderBy};
+/// use ferric_fred::{OrderBy, ReleaseId};
 /// let results = client
-///     .category_series(CategoryId::new(125))
+///     .release_series(ReleaseId::new(53))
 ///     .order_by(OrderBy::Popularity)
 ///     .limit(10)
 ///     .send()
 ///     .await?;
-/// println!("{} series in this category", results.count);
+/// println!("{} series", results.count);
 /// # Ok(())
 /// # }
 /// ```
 #[derive(Debug, Clone)]
-#[must_use = "a CategorySeriesRequest does nothing until you call `.send()`"]
-pub struct CategorySeriesRequest<'a> {
+#[must_use = "a SeriesListRequest does nothing until you call `.send()`"]
+pub struct SeriesListRequest<'a> {
     client: &'a Client,
-    category_id: CategoryId,
+    /// The endpoint path, e.g. `/category/series`.
+    path: &'static str,
+    /// The facet filter as a `(key, value)` query pair, e.g.
+    /// `("category_id", "125")` or `("tag_names", "gdp;quarterly")`.
+    facet: (&'static str, String),
     order_by: Option<OrderBy>,
     sort_order: Option<SortOrder>,
     limit: Option<u32>,
     offset: Option<u32>,
 }
 
-impl<'a> CategorySeriesRequest<'a> {
-    pub(crate) fn new(client: &'a Client, category_id: CategoryId) -> Self {
+impl<'a> SeriesListRequest<'a> {
+    pub(crate) fn new(
+        client: &'a Client,
+        path: &'static str,
+        facet_key: &'static str,
+        facet_value: String,
+    ) -> Self {
         Self {
             client,
-            category_id,
+            path,
+            facet: (facet_key, facet_value),
             order_by: None,
             sort_order: None,
             limit: None,
@@ -65,22 +79,25 @@ impl<'a> CategorySeriesRequest<'a> {
         self
     }
 
-    /// Run the request and return the series in the category with pagination
-    /// metadata.
+    /// Run the request and return the matching series with pagination metadata.
     ///
     /// # Errors
     ///
     /// Returns an error if the request fails to send, FRED returns a non-success
     /// status, or the response body cannot be deserialized.
     pub async fn send(self) -> Result<SeriesSearchResults> {
-        self.client.execute_category_series(&self).await
+        self.client.execute_series_list(&self).await
     }
 
-    /// Serialize the set parameters to FRED query key/value pairs. `api_key` and
-    /// `file_type` are added by the client, not here.
+    /// The endpoint path this request targets (used by the client to dispatch).
+    pub(crate) fn path(&self) -> &'static str {
+        self.path
+    }
+
+    /// Serialize the facet plus set options to FRED query key/value pairs.
+    /// `api_key` and `file_type` are added by the client, not here.
     pub(crate) fn query_params(&self) -> Vec<(&'static str, String)> {
-        let mut params: Vec<(&'static str, String)> =
-            vec![("category_id", self.category_id.get().to_string())];
+        let mut params: Vec<(&'static str, String)> = vec![(self.facet.0, self.facet.1.clone())];
         if let Some(order_by) = self.order_by {
             params.push(("order_by", order_by.query_code().to_owned()));
         }
