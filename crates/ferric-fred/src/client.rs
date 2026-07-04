@@ -1,6 +1,7 @@
+use serde::de::DeserializeOwned;
 use serde::Deserialize;
 
-use crate::{Error, Observation, Result, Series, SeriesId};
+use crate::{Error, Observation, ObservationsRequest, Result, Series, SeriesId};
 
 /// Base URL for the FRED REST API.
 const FRED_BASE_URL: &str = "https://api.stlouisfed.org/fred";
@@ -36,40 +37,74 @@ impl Client {
         Self::new(api_key)
     }
 
-    /// Fetch every observation for a series.
-    pub async fn observations(&self, series_id: &SeriesId) -> Result<Vec<Observation>> {
-        let response = self
-            .http
-            .get(format!("{}/series/observations", self.base_url))
-            .query(&[
-                ("series_id", series_id.as_str()),
-                ("api_key", self.api_key.as_str()),
-                ("file_type", "json"),
-            ])
-            .send()
+    /// Begin an observations request for a series.
+    ///
+    /// Returns a builder; set optional parameters (date range, units transform,
+    /// frequency aggregation, sort order, paging) and call
+    /// [`ObservationsRequest::send`] to run it. With nothing set, FRED's
+    /// defaults apply (full history, levels, ascending by date).
+    ///
+    /// ```no_run
+    /// # async fn run(client: &ferric_fred::Client) -> ferric_fred::Result<()> {
+    /// use ferric_fred::{SeriesId, Units};
+    /// let obs = client
+    ///     .observations(&SeriesId::new("GNPCA"))
+    ///     .units(Units::PercentChange)
+    ///     .limit(10)
+    ///     .send()
+    ///     .await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn observations(&self, series_id: &SeriesId) -> ObservationsRequest<'_> {
+        ObservationsRequest::new(self, series_id.clone())
+    }
+
+    /// Run an observations request (invoked by [`ObservationsRequest::send`]).
+    pub(crate) async fn execute_observations(
+        &self,
+        request: &ObservationsRequest<'_>,
+    ) -> Result<Vec<Observation>> {
+        let response: ObservationsResponse = self
+            .get("/series/observations", &request.query_params())
             .await?;
-
-        let status = response.status();
-        let body = response.bytes().await?;
-
-        if !status.is_success() {
-            return Err(api_error(status, &body));
-        }
-
-        let parsed: ObservationsResponse = serde_json::from_slice(&body)?;
-        Ok(parsed.observations)
+        Ok(response.observations)
     }
 
     /// Fetch metadata for a series (the `fred/series` endpoint).
     pub async fn series(&self, series_id: &SeriesId) -> Result<Series> {
+        let response: SeriesResponse = self
+            .get("/series", &[("series_id", series_id.as_str().to_owned())])
+            .await?;
+        response
+            .seriess
+            .into_iter()
+            .next()
+            .ok_or_else(|| Error::Api {
+                status: 200,
+                code: None,
+                message: format!("FRED returned no series for id `{series_id}`"),
+            })
+    }
+
+    /// GET `path` with `params` plus `api_key`/`file_type`, then deserialize the
+    /// JSON body as `T`. A non-success status becomes [`Error::Api`] (or
+    /// [`Error::RateLimited`]); a body that doesn't match `T` becomes
+    /// [`Error::Deserialize`].
+    async fn get<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        params: &[(&'static str, String)],
+    ) -> Result<T> {
+        let mut query: Vec<(&str, String)> = Vec::with_capacity(params.len() + 2);
+        query.push(("api_key", self.api_key.clone()));
+        query.push(("file_type", "json".to_owned()));
+        query.extend(params.iter().cloned());
+
         let response = self
             .http
-            .get(format!("{}/series", self.base_url))
-            .query(&[
-                ("series_id", series_id.as_str()),
-                ("api_key", self.api_key.as_str()),
-                ("file_type", "json"),
-            ])
+            .get(format!("{}{}", self.base_url, path))
+            .query(&query)
             .send()
             .await?;
 
@@ -80,12 +115,7 @@ impl Client {
             return Err(api_error(status, &body));
         }
 
-        let parsed: SeriesResponse = serde_json::from_slice(&body)?;
-        parsed.seriess.into_iter().next().ok_or_else(|| Error::Api {
-            status: status.as_u16(),
-            code: None,
-            message: format!("FRED returned no series for id `{series_id}`"),
-        })
+        serde_json::from_slice(&body).map_err(Error::from)
     }
 }
 

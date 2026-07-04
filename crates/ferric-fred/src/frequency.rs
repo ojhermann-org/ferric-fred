@@ -61,6 +61,23 @@ impl Frequency {
             Self::Other(label) => label,
         }
     }
+
+    /// The FRED query code for requesting aggregation to this frequency (the
+    /// observations `frequency` parameter): `d`, `w`, `bw`, `m`, `q`, `sa`,
+    /// `a`. For [`Frequency::Other`] this returns the raw label, which may not
+    /// be a valid FRED code.
+    pub fn query_code(&self) -> &str {
+        match self {
+            Self::Daily => "d",
+            Self::Weekly => "w",
+            Self::Biweekly => "bw",
+            Self::Monthly => "m",
+            Self::Quarterly => "q",
+            Self::Semiannual => "sa",
+            Self::Annual => "a",
+            Self::Other(label) => label,
+        }
+    }
 }
 
 impl fmt::Display for Frequency {
@@ -106,5 +123,12 @@ mod tests {
             Frequency::Other("Weekly, Ending Friday".to_owned()).to_string(),
             "Weekly, Ending Friday"
         );
+    }
+
+    #[test]
+    fn query_codes_match_fred() {
+        assert_eq!(Frequency::Monthly.query_code(), "m");
+        assert_eq!(Frequency::Semiannual.query_code(), "sa");
+        assert_eq!(Frequency::Daily.query_code(), "d");
     }
 }

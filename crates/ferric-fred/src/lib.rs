@@ -13,27 +13,35 @@
 //! use ferric_fred::{Client, SeriesId};
 //!
 //! let client = Client::from_env()?; // reads FRED_API_KEY
-//! let observations = client.observations(&SeriesId::new("GNPCA")).await?;
+//! let observations = client.observations(&SeriesId::new("GNPCA")).send().await?;
 //! println!("{} observations", observations.len());
 //! # Ok(())
 //! # }
 //! ```
 
+mod aggregation_method;
 mod client;
 mod error;
 mod frequency;
 mod ids;
 mod observation;
+mod observations_request;
 mod seasonal_adjustment;
 mod series;
+mod sort_order;
+mod units;
 
+pub use aggregation_method::AggregationMethod;
 pub use client::Client;
 pub use error::Error;
 pub use frequency::Frequency;
 pub use ids::SeriesId;
 pub use observation::Observation;
+pub use observations_request::ObservationsRequest;
 pub use seasonal_adjustment::SeasonalAdjustment;
 pub use series::Series;
+pub use sort_order::SortOrder;
+pub use units::Units;
 
 /// A `Result` whose error type is this crate's [`Error`].
 pub type Result<T> = std::result::Result<T, Error>;
