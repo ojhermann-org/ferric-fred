@@ -22,10 +22,21 @@ jobs:
 
       # CI uses the same Nix flake as local dev (ADR-0008), so the Rust
       # toolchain, cargo-nextest, and cargo-deny versions match exactly — a gate
-      # that passes locally passes here. A binary cache (cache-nix-action or
-      # cachix) can be layered later to speed up repeat runs.
+      # that passes locally passes here.
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@main
+
+      # Swatinem/rust-cache keys its cache off `rustc`/`cargo`, which live in the
+      # flake dev shell rather than on the runner's PATH. Expose that bin dir so
+      # the cache action (and its cargo-metadata probe) can find the toolchain.
+      - name: Expose the flake's Rust toolchain on PATH
+        run: nix develop --command bash -c 'dirname "$(command -v cargo)" >> "$GITHUB_PATH"'
+
+      # Cache ~/.cargo (registry/git) and target/ across runs so unchanged
+      # dependencies aren't recompiled. Backed by the GitHub Actions cache — no
+      # external service. (A /nix/store cache can be layered on top later.)
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
 
       - name: Formatting gate
         run: nix develop --command bash -c "cargo fmt --check"
