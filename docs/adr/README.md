@@ -20,6 +20,7 @@ use them, and [`0000-adr-template.md`](0000-adr-template.md) for the template.
 | [0009](0009-secret-management-infisical-direnv.md) | Secret management via Infisical + direnv | Accepted |
 | [0010](0010-mcp-server-design.md) | MCP server design | Accepted |
 | [0011](0011-testing-strategy.md) | Testing strategy | Accepted |
+| [0012](0012-ci-versioning-and-release.md) | CI versioning & release strategy | Accepted |
 
 ## Backlog (proposed, not yet written)
 
@@ -29,6 +30,5 @@ Order and contents will change as we build.
 - CLI binary naming (is the CLI binary `fred`?) — small follow-up to ADR-0002
 - Pre-commit secret guard (prek + gitleaks + secret-file block), as in the
   sibling `infisical` repo — proposed follow-up to ADR-0009
-- CI & versioning/release strategy (independent semver, `release-plz`,
-  conventional commits, Infisical machine-identity token for CI) — needed once
-  we have more than one crate
+- Infisical machine-identity token for CI, to run the `#[ignore]` live tests
+  there — follow-up to ADR-0009 and ADR-0012
