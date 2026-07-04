@@ -1,0 +1,17 @@
+# Copy to .envrc (gitignored) and run `direnv allow`:
+#     cp .envrc.example .envrc && direnv allow
+#
+# The reusable, secret-free config lives in the committed .envrc.shared (pinned
+# toolchain + Infisical secret injection). This local .envrc just loads it.
+source_env .envrc.shared
+
+# --- Optional machine-local overrides (kept out of git) ---
+#
+# Fallback secret, used only when Infisical isn't available/logged in. Injected
+# Infisical values take precedence over anything you set before the source line;
+# to force a manual value, set it AFTER the source line instead.
+# export FRED_API_KEY="your-fred-api-key"
+#
+# Point at a non-default Infisical environment/folder if needed:
+# export INFISICAL_ENV="dev"
+# export INFISICAL_PATH="/"

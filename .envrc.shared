@@ -1,0 +1,32 @@
+# Committed, secret-free shared config — sourced by the untracked .envrc
+# (`source_env .envrc.shared`). Holds the pinned toolchain hook plus Infisical
+# secret injection. No secret VALUES live here; keep it that way.
+
+# Pinned dev toolchain (Rust, cargo-nextest, cargo-deny, infisical).
+# Requires nix-direnv.
+use flake
+
+# Inject project secrets (e.g. FRED_API_KEY) from Infisical into the shell env,
+# so `cargo run` / `cargo test` see them without secrets ever touching disk.
+#
+# One-time setup per machine (see README "Secrets"):
+#   infisical login          # user auth, opens a browser
+#   infisical init           # links this dir → project, writes .infisical.json
+#
+# Non-fatal by design: if Infisical is unavailable / not logged in, nothing is
+# injected here and we fall back to whatever the untracked .envrc exports — so
+# you can always hand-set FRED_API_KEY there. env/path default to dev:/ and are
+# overridable via INFISICAL_ENV / INFISICAL_PATH (e.g. in your local .envrc).
+if command -v infisical >/dev/null 2>&1; then
+  watch_file .infisical.json
+  if _ff_secrets="$(infisical export \
+        --format=dotenv-export \
+        --env="${INFISICAL_ENV:-dev}" \
+        --path="${INFISICAL_PATH:-/}" 2>/dev/null)" && [ -n "$_ff_secrets" ]; then
+    eval "$_ff_secrets"
+    log_status "infisical: injected secrets (env=${INFISICAL_ENV:-dev} path=${INFISICAL_PATH:-/})"
+  else
+    log_status "infisical: nothing injected — run 'infisical login' + 'infisical init', or set secrets in the untracked .envrc"
+  fi
+  unset _ff_secrets
+fi

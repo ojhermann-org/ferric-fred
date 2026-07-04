@@ -42,6 +42,7 @@
             rustToolchain
             pkgs.cargo-nextest
             pkgs.cargo-deny
+            pkgs.infisical # CLI: inject secret values (e.g. FRED_API_KEY) via direnv
           ];
 
           env.RUST_BACKTRACE = "1";

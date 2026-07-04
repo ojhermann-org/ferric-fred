@@ -16,7 +16,8 @@ use them, and [`0000-adr-template.md`](0000-adr-template.md) for the template.
 | [0005](0005-domain-modelling-and-strong-typing.md) | Domain modelling & strong typing | Accepted |
 | [0006](0006-license.md) | License | Accepted |
 | [0007](0007-rust-edition-and-msrv.md) | Rust edition & MSRV policy | Accepted |
-| [0008](0008-nix-flake-dev-environment.md) | Nix flake for the development environment | Accepted |
+| [0008](0008-nix-flake-dev-environment.md) | Nix flake for the development environment | Accepted (direnv wiring refined by 0009) |
+| [0009](0009-secret-management-infisical-direnv.md) | Secret management via Infisical + direnv | Accepted |
 
 ## Backlog (proposed, not yet written)
 
@@ -24,7 +25,9 @@ Decisions we intend to record, roughly in the order we expect to need them.
 Order and contents will change as we build.
 
 - CLI binary naming (is the CLI binary `fred`?) — small follow-up to ADR-0002
-- API-key & configuration handling (env var, config file, precedence)
+- Pre-commit secret guard (prek + gitleaks + secret-file block), as in the
+  sibling `infisical` repo — proposed follow-up to ADR-0009
 - Testing strategy (unit, HTTP mocking, recorded fixtures)
-- Versioning & release strategy (independent semver, `release-plz`,
-  conventional commits) — needed once we have more than one crate
+- CI & versioning/release strategy (independent semver, `release-plz`,
+  conventional commits, Infisical machine-identity token for CI) — needed once
+  we have more than one crate

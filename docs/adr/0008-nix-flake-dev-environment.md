@@ -31,6 +31,10 @@ now, to a **development shell only**.
   `nixfmt-rfc-style` so `nix fmt` works.
 - **direnv**: a `.envrc` containing `use flake` auto-loads the shell on entry;
   `.direnv/` and `result` are gitignored.
+  > **Refined by [ADR-0009](0009-secret-management-infisical-direnv.md):** the
+  > tracked entry point moved to a secret-free **`.envrc.shared`** (which holds
+  > the `use flake` line plus Infisical injection); `.envrc` became git-ignored
+  > and now just `source_env .envrc.shared`.
 
 ### Deferred to a future ADR (Phase 2)
 

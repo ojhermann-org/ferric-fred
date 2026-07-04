@@ -40,6 +40,27 @@ a recent stable Rust (e.g. via `rustup`) and use `cargo` as usual. Either way,
 building is plain `cargo build` / `cargo test`; Nix supplies the environment,
 not the build (see [ADR-0008](docs/adr/0008-nix-flake-dev-environment.md)).
 
+## Secrets
+
+The client reads a **FRED API key** from the `FRED_API_KEY` environment
+variable. Get a free key at
+<https://fredaccount.stlouisfed.org/apikeys>.
+
+Secrets are injected via [Infisical](https://infisical.com) + direnv (see
+[ADR-0009](docs/adr/0009-secret-management-infisical-direnv.md)). One-time setup:
+
+```sh
+cp .envrc.example .envrc     # local, git-ignored entry point
+infisical login             # user auth (opens a browser)
+infisical init              # link this dir → project, writes .infisical.json
+direnv allow                # load the shell + inject secrets on cd-in
+```
+
+Store the key with `infisical secrets set FRED_API_KEY="…" --env=dev --path=/`.
+No Infisical? Just set it directly in your git-ignored `.envrc`:
+`export FRED_API_KEY="…"`. The library only reads the env var — it has no
+dependency on Infisical.
+
 ## Architecture decisions
 
 Design decisions are recorded as ADRs in [`docs/adr/`](docs/adr/). Start with

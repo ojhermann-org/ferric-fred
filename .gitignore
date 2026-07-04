@@ -13,6 +13,12 @@ result
 result-*
 .direnv/
 
+# Local direnv entry point — untracked; holds any raw secret fallback.
+# The shared, secret-free config (.envrc.shared) and its template
+# (.envrc.example) ARE tracked.
+.envrc
+.envrc.local
+
 # Editor / OS
 .DS_Store
 *.swp
