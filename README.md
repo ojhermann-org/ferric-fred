@@ -24,12 +24,12 @@ are managed on top of that (see the ADRs).
 ## Status
 
 Early construction. The library covers the `series`, `series/observations`,
-`series/search`, and `category` (`category`, `category/children`,
-`category/series`) endpoints; the `fred` CLI (this repo's first consumer) can
-search, show series metadata, print observations, chart them in an interactive
-terminal UI, and browse the category tree. The `fred-mcp` server (ADR-0010)
-speaks MCP over stdio with six tools (`search_series`, `get_series`,
-`get_observations`, and the three `category` tools).
+`series/search`, `category` (`category`, `category/children`,
+`category/series`), and `release` (`releases`, `release`, `release/series`)
+endpoints; the `fred` CLI (this repo's first consumer) can search, show series
+metadata, print observations, chart them in an interactive terminal UI, and
+browse the category tree and releases. The `fred-mcp` server (ADR-0010) speaks
+MCP over stdio with the corresponding tools.
 
 ## Using the CLI
 
@@ -44,6 +44,9 @@ fred chart GNPCA --start 1950-01-01                              # interactive t
 fred category                                                    # browse the category tree (root)
 fred category 13                                                 # a category and its children
 fred category 125 --series --limit 5                            # series in a category
+fred release                                                     # list all data releases
+fred release 53                                                  # a release's metadata
+fred release 53 --series --limit 5                              # series in a release
 fred series GNPCA --json | jq .frequency                        # JSON output for scripting
 ```
 

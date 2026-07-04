@@ -28,7 +28,20 @@ fn help_lists_every_subcommand() {
         .stdout(predicate::str::contains("series"))
         .stdout(predicate::str::contains("observations"))
         .stdout(predicate::str::contains("chart"))
-        .stdout(predicate::str::contains("category"));
+        .stdout(predicate::str::contains("category"))
+        .stdout(predicate::str::contains("release"));
+}
+
+#[test]
+fn release_series_without_id_is_an_error() {
+    // --series requires a release id (clap `requires`); caught at parse time,
+    // before any network call.
+    fred()
+        .args(["release", "--series"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("required arguments"))
+        .stderr(predicate::str::contains("<ID>"));
 }
 
 #[test]
@@ -162,4 +175,28 @@ fn category_series_lists_series() {
         .assert()
         .success()
         .stdout(predicate::str::contains("series in category 125"));
+}
+
+#[test]
+#[ignore = "hits the live FRED API; requires FRED_API_KEY"]
+fn release_list_and_single_and_series() {
+    let fred = || Command::cargo_bin("fred").unwrap();
+
+    fred()
+        .args(["release", "--limit", "3"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("releases:"));
+
+    fred()
+        .args(["release", "53"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("press release:"));
+
+    fred()
+        .args(["release", "53", "--series", "--limit", "1"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("series in release 53"));
 }

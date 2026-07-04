@@ -11,7 +11,7 @@ mod chart;
 use anyhow::{Context, Result};
 use chrono::NaiveDate;
 use clap::{Args, Parser, Subcommand};
-use ferric_fred::{CategoryId, Client, ObservationsRequest, SeriesId};
+use ferric_fred::{CategoryId, Client, ObservationsRequest, ReleaseId, SeriesId};
 
 use args::{AggregationArg, FrequencyArg, OrderByArg, SortOrderArg, UnitsArg};
 
@@ -83,6 +83,26 @@ enum Command {
         #[arg(long)]
         sort: Option<SortOrderArg>,
     },
+    /// List FRED data releases, show one, or list a release's series.
+    ///
+    /// With no id, lists all releases. With an id, shows that release; add
+    /// `--series` to list the series it publishes.
+    Release {
+        /// Release id. Omit to list all releases.
+        id: Option<u32>,
+        /// With an id: list the release's series instead of its metadata.
+        #[arg(long, requires = "id")]
+        series: bool,
+        /// Maximum number of results (applies to the list and to `--series`).
+        #[arg(long)]
+        limit: Option<u32>,
+        /// With `--series`: field to order series by.
+        #[arg(long)]
+        order_by: Option<OrderByArg>,
+        /// Sort order.
+        #[arg(long)]
+        sort: Option<SortOrderArg>,
+    },
 }
 
 /// Options controlling an observations query.
@@ -136,6 +156,13 @@ async fn main() -> Result<()> {
             order_by,
             sort,
         } => category(&client, id, series, limit, order_by, sort, json).await,
+        Command::Release {
+            id,
+            series,
+            limit,
+            order_by,
+            sort,
+        } => release(&client, id, series, limit, order_by, sort, json).await,
     }
 }
 
@@ -269,6 +296,86 @@ async fn category(
         for child in &children {
             println!("  {}\t{}", child.id, child.name);
         }
+    }
+    Ok(())
+}
+
+async fn release(
+    client: &Client,
+    id: Option<u32>,
+    series: bool,
+    limit: Option<u32>,
+    order_by: Option<OrderByArg>,
+    sort: Option<SortOrderArg>,
+    json: bool,
+) -> Result<()> {
+    // clap guarantees `--series` is only set alongside an id, so here (no id)
+    // `series` is always false — just list all releases.
+    let Some(id) = id else {
+        let mut request = client.releases();
+        if let Some(limit) = limit {
+            request = request.limit(limit);
+        }
+        if let Some(sort) = sort {
+            request = request.sort_order(sort.into());
+        }
+
+        let results = request.send().await.context("listing releases failed")?;
+
+        if json {
+            return print_json(&results);
+        }
+
+        println!("{} releases:", results.count);
+        for release in &results.releases {
+            println!("{}\t{}", release.id, release.name);
+        }
+        return Ok(());
+    };
+
+    let release_id = ReleaseId::new(id);
+
+    if series {
+        let mut request = client.release_series(release_id);
+        if let Some(limit) = limit {
+            request = request.limit(limit);
+        }
+        if let Some(order_by) = order_by {
+            request = request.order_by(order_by.into());
+        }
+        if let Some(sort) = sort {
+            request = request.sort_order(sort.into());
+        }
+
+        let results = request
+            .send()
+            .await
+            .with_context(|| format!("fetching series for release {id} failed"))?;
+
+        if json {
+            return print_json(&results);
+        }
+
+        println!("{} series in release {id}:", results.count);
+        for series in &results.series {
+            println!("{}\t{}", series.id, series.title);
+        }
+        return Ok(());
+    }
+
+    let release = client
+        .release(release_id)
+        .await
+        .with_context(|| format!("fetching release {id} failed"))?;
+
+    if json {
+        return print_json(&release);
+    }
+
+    println!("{}: {}", release.id, release.name);
+    println!("  press release: {}", release.press_release);
+    if let Some(link) = &release.link {
+        println!("  link:          {link}");
     }
     Ok(())
 }
