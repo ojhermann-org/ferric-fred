@@ -1,0 +1,21 @@
+[package]
+name = "ferric-fred"
+description = "A strongly-typed async Rust client for the FRED (Federal Reserve Economic Data) API."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+chrono = { workspace = true }
+
+[dev-dependencies]
+# `rt` + `macros` give `#[tokio::test]` a current-thread runtime for the live
+# integration test; the library itself pulls no tokio features of its own.
+tokio = { workspace = true, features = ["rt", "macros"] }
+
+[lints]
+workspace = true

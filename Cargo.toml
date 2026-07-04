@@ -1,0 +1,29 @@
+[workspace]
+resolver = "2"
+members = ["crates/ferric-fred"]
+
+# Shared metadata, dependency versions, and lints, inherited by every member
+# crate via `field.workspace = true` (see ADR-0002).
+[workspace.package]
+version = "0.0.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+# Async HTTP on rustls — no system OpenSSL dependency (ADR-0003). We own
+# deserialization (ADR-0004/0005), so reqwest's `json` feature is not enabled;
+# we read the raw body and parse with serde_json to distinguish transport from
+# deserialize errors.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+chrono = { version = "0.4", default-features = false, features = ["serde", "std"] }
+tokio = { version = "1", default-features = false }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+all = "warn"
