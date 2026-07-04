@@ -39,11 +39,14 @@ fred series GNPCA                                                 # show one ser
 fred observations GDP --units pch --sort desc --limit 4          # transformed observations
 fred observations GDP --frequency annual --aggregation avg       # aggregate to a lower frequency
 fred chart GNPCA --start 1950-01-01                              # interactive terminal chart
+fred series GNPCA --json | jq .frequency                        # JSON output for scripting
 ```
 
-`fred chart` opens an interactive [ratatui](https://ratatui.rs/) line chart of a
-series' observations (it accepts the same flags as `observations`); press `q`,
-`Esc`, or `Ctrl-C` to quit.
+Add `--json` to any data command (`search`, `series`, `observations`) for
+machine-readable output — each emits its domain type as JSON (`chart` ignores
+it). `fred chart` opens an interactive [ratatui](https://ratatui.rs/) line chart
+of a series' observations (it accepts the same flags as `observations`); press
+`q`, `Esc`, or `Ctrl-C` to quit.
 
 Run it from the workspace with `cargo run -p ferric-fred-cli -- <args>`, and see
 `fred <command> --help` for every flag (`--units`, `--order-by`, … accept the

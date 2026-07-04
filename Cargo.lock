@@ -397,6 +397,8 @@ dependencies = [
  "ferric-fred",
  "predicates",
  "ratatui",
+ "serde",
+ "serde_json",
  "tokio",
 ]
 

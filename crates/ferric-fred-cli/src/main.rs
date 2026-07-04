@@ -21,6 +21,10 @@ use args::{AggregationArg, FrequencyArg, OrderByArg, SortOrderArg, UnitsArg};
 struct Cli {
     #[command(subcommand)]
     command: Command,
+    /// Output results as JSON instead of text (data commands only; `chart`
+    /// ignores it).
+    #[arg(long, global = true)]
+    json: bool,
 }
 
 #[derive(Subcommand)]
@@ -93,17 +97,25 @@ async fn main() -> Result<()> {
     let client = Client::from_env()
         .context("could not initialize the FRED client (is FRED_API_KEY set?)")?;
 
+    let json = cli.json;
     match cli.command {
         Command::Search {
             text,
             limit,
             order_by,
             sort,
-        } => search(&client, &text, limit, order_by, sort).await,
-        Command::Series { id } => series(&client, &id).await,
-        Command::Observations { id, options } => observations(&client, &id, &options).await,
+        } => search(&client, &text, limit, order_by, sort, json).await,
+        Command::Series { id } => series(&client, &id, json).await,
+        Command::Observations { id, options } => observations(&client, &id, &options, json).await,
         Command::Chart { id, options } => chart_command(&client, &id, &options).await,
     }
+}
+
+/// Print a value as pretty-printed JSON to stdout.
+fn print_json<T: serde::Serialize>(value: &T) -> Result<()> {
+    let json = serde_json::to_string_pretty(value).context("serializing result to JSON failed")?;
+    println!("{json}");
+    Ok(())
 }
 
 async fn search(
@@ -112,6 +124,7 @@ async fn search(
     limit: u32,
     order_by: Option<OrderByArg>,
     sort: Option<SortOrderArg>,
+    json: bool,
 ) -> Result<()> {
     let mut request = client.search(text).limit(limit);
     if let Some(order_by) = order_by {
@@ -126,6 +139,10 @@ async fn search(
         .await
         .with_context(|| format!("search for {text:?} failed"))?;
 
+    if json {
+        return print_json(&results);
+    }
+
     println!(
         "{} match(es); showing {}:",
         results.count,
@@ -137,11 +154,15 @@ async fn search(
     Ok(())
 }
 
-async fn series(client: &Client, id: &str) -> Result<()> {
+async fn series(client: &Client, id: &str, json: bool) -> Result<()> {
     let series = client
         .series(&SeriesId::new(id))
         .await
         .with_context(|| format!("fetching series `{id}` failed"))?;
+
+    if json {
+        return print_json(&series);
+    }
 
     println!("{}: {}", series.id, series.title);
     println!("  frequency:  {}", series.frequency);
@@ -187,11 +208,20 @@ fn build_request<'a>(
     request
 }
 
-async fn observations(client: &Client, id: &str, options: &ObservationOptions) -> Result<()> {
+async fn observations(
+    client: &Client,
+    id: &str,
+    options: &ObservationOptions,
+    json: bool,
+) -> Result<()> {
     let observations = build_request(client, id, options)
         .send()
         .await
         .with_context(|| format!("fetching observations for `{id}` failed"))?;
+
+    if json {
+        return print_json(&observations);
+    }
 
     println!("{} observation(s):", observations.len());
     for observation in &observations {

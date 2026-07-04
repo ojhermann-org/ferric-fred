@@ -93,6 +93,15 @@ fn missing_api_key_is_a_friendly_error() {
         .stderr(predicate::str::contains("FRED_API_KEY"));
 }
 
+#[test]
+fn json_is_a_global_flag() {
+    fred()
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("--json"));
+}
+
 // --- Live tests: hit the real FRED API and require FRED_API_KEY. Run with
 // `--run-ignored all` (nextest) or `--ignored` inside the direnv/infisical
 // shell. These build a fresh Command so the inherited FRED_API_KEY survives. ---
@@ -117,4 +126,16 @@ fn observations_succeeds_against_live_fred() {
         .assert()
         .success()
         .stdout(predicate::str::contains("observation(s)"));
+}
+
+#[test]
+#[ignore = "hits the live FRED API; requires FRED_API_KEY"]
+fn json_output_emits_json() {
+    Command::cargo_bin("fred")
+        .unwrap()
+        .args(["series", "GNPCA", "--json"])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("{"))
+        .stdout(predicate::str::contains("\"id\": \"GNPCA\""));
 }
