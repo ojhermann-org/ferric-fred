@@ -7,8 +7,8 @@
 //! Tools: `search_series`, `get_series`, `get_observations`, the category tools
 //! (`get_category`, `get_category_children`, `get_category_series`), the release
 //! tools (`get_releases`, `get_release`, `get_release_series`), and the tag
-//! tools (`get_tags`, `get_tags_series`, `get_series_tags`) — one per library
-//! endpoint, with typed inputs (see [`params`]).
+//! tools (`get_tags`, `get_related_tags`, `get_tags_series`, `get_series_tags`)
+//! — one per library endpoint, with typed inputs (see [`params`]).
 //!
 //! Note: over stdio, **stdout is the protocol channel** — nothing may be printed
 //! to it. Any diagnostics must go to stderr.
@@ -140,6 +140,19 @@ struct GetTagsSeriesParams {
     /// Sort direction.
     sort: Option<SortOrderArg>,
     /// Maximum number of series to return.
+    limit: Option<u32>,
+}
+
+/// Input parameters for the `get_related_tags` tool.
+#[derive(Debug, Deserialize, JsonSchema)]
+struct GetRelatedTagsParams {
+    /// Seed tag names; returns the tags that co-occur with *all* of them.
+    tag_names: Vec<String>,
+    /// Restrict the related tags to those matching this text.
+    search_text: Option<String>,
+    /// Sort direction (tags are ordered by series count by default).
+    sort: Option<SortOrderArg>,
+    /// Maximum number of tags to return.
     limit: Option<u32>,
 }
 
@@ -480,6 +493,39 @@ impl FredServer {
     }
 
     #[tool(
+        name = "get_related_tags",
+        description = "Given a set of seed tags, list the tags that co-occur with all of them — \
+                       use it to discover adjacent tags and refine a faceted search. Optionally \
+                       filter by search text. Returns tags with pagination metadata."
+    )]
+    async fn get_related_tags(
+        &self,
+        Parameters(params): Parameters<GetRelatedTagsParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let mut request = self.client.related_tags(&params.tag_names);
+        if let Some(text) = params.search_text {
+            request = request.search_text(text);
+        }
+        if let Some(sort) = params.sort {
+            request = request.sort_order(sort.into());
+        }
+        if let Some(limit) = params.limit {
+            request = request.limit(limit);
+        }
+
+        match request.send().await {
+            Ok(results) => {
+                let value = serde_json::to_value(&results)
+                    .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+                Ok(CallToolResult::structured(value))
+            }
+            Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(
+                error.to_string(),
+            )])),
+        }
+    }
+
+    #[tool(
         name = "get_tags_series",
         description = "List the FRED series carrying ALL of the given tags (faceted discovery), \
                        with pagination metadata. Supports ordering, sort direction, and a result \
@@ -568,8 +614,8 @@ impl ServerHandler for FredServer {
              the root, id 0), and get_category_series (the series in a category) — the release \
              tools — get_releases (list publications), get_release, and get_release_series (the \
              series in a release) — and the tag tools — get_tags (browse/search keywords), \
-             get_tags_series (series carrying a set of tags), and get_series_tags (a series' \
-             tags)."
+             get_related_tags (tags co-occurring with a seed set), get_tags_series (series \
+             carrying a set of tags), and get_series_tags (a series' tags)."
                 .to_string(),
         );
         info
@@ -705,6 +751,20 @@ mod tests {
         let params: GetSeriesTagsParams =
             serde_json::from_value(serde_json::json!({"series_id": "GNPCA"})).unwrap();
         assert_eq!(params.series_id, "GNPCA");
+    }
+
+    #[test]
+    fn related_tags_params_deserialize_names_and_enums() {
+        let params: GetRelatedTagsParams = serde_json::from_value(serde_json::json!({
+            "tag_names": ["gdp"],
+            "search_text": "quarterly",
+            "sort": "asc"
+        }))
+        .unwrap();
+        assert_eq!(params.tag_names, ["gdp"]);
+        assert_eq!(params.search_text.as_deref(), Some("quarterly"));
+        assert!(matches!(params.sort, Some(SortOrderArg::Asc)));
+        assert!(params.limit.is_none());
     }
 
     #[test]
