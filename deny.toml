@@ -1,0 +1,29 @@
+# cargo-deny configuration — gates dependency licenses, advisories, bans, and
+# sources. Run locally with `cargo deny check`; also enforced in CI.
+
+[licenses]
+# Permissive licenses currently present in our dependency tree (all OSI/FSF
+# approved, no copyleft). Kept deliberately tight: a new dependency that pulls
+# an unlisted license fails the check, so we review it before it lands.
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CDLA-Permissive-2.0",
+    "ISC",
+    "MIT",
+    "Unicode-3.0",
+    "Unlicense",
+]
+confidence-threshold = 0.9
+
+[bans]
+# Duplicate versions are noisy but not fatal; wildcard version specs are banned.
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+# Only the official crates.io registry; no ad-hoc git or unknown registries.
+unknown-registry = "deny"
+unknown-git = "deny"

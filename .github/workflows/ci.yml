@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Newer pushes cancel in-flight runs on the same ref.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: fmt · clippy · test · deny
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # CI uses the same Nix flake as local dev (ADR-0008), so the Rust
+      # toolchain, cargo-nextest, and cargo-deny versions match exactly — a gate
+      # that passes locally passes here. A binary cache (cache-nix-action or
+      # cachix) can be layered later to speed up repeat runs.
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Formatting gate
+        run: nix develop --command bash -c "cargo fmt --check"
+
+      - name: Clippy (warnings are errors)
+        run: nix develop --command bash -c "cargo clippy --all-targets -- -D warnings"
+
+      # Offline tests only. The #[ignore] live FRED tests are skipped here;
+      # running them in CI needs an Infisical machine identity (deferred; ADR-0009).
+      - name: Tests
+        run: nix develop --command bash -c "cargo nextest run"
+
+      - name: Doctests
+        run: nix develop --command bash -c "cargo test --doc"
+
+      - name: Dependency policy (licenses, advisories, bans, sources)
+        run: nix develop --command bash -c "cargo deny check"
