@@ -5,9 +5,10 @@
 //! from `FRED_API_KEY` via `Client::from_env` (ADR-0009).
 //!
 //! Tools: `search_series`, `get_series`, `get_observations`, the category tools
-//! (`get_category`, `get_category_children`, `get_category_series`), and the
-//! release tools (`get_releases`, `get_release`, `get_release_series`) — one per
-//! library endpoint, with typed inputs (see [`params`]).
+//! (`get_category`, `get_category_children`, `get_category_series`), the release
+//! tools (`get_releases`, `get_release`, `get_release_series`), and the tag
+//! tools (`get_tags`, `get_tags_series`, `get_series_tags`) — one per library
+//! endpoint, with typed inputs (see [`params`]).
 //!
 //! Note: over stdio, **stdout is the protocol channel** — nothing may be printed
 //! to it. Any diagnostics must go to stderr.
@@ -115,6 +116,38 @@ struct ReleaseSeriesParams {
     order_by: Option<OrderByArg>,
     /// Sort direction.
     sort: Option<SortOrderArg>,
+}
+
+/// Input parameters for the `get_tags` tool.
+#[derive(Debug, Deserialize, JsonSchema)]
+struct GetTagsParams {
+    /// Restrict to tags matching this text; omit to browse the whole vocabulary.
+    search_text: Option<String>,
+    /// Sort direction (tags are ordered by series count by default).
+    sort: Option<SortOrderArg>,
+    /// Maximum number of tags to return.
+    limit: Option<u32>,
+}
+
+/// Input parameters for the `get_tags_series` tool.
+#[derive(Debug, Deserialize, JsonSchema)]
+struct GetTagsSeriesParams {
+    /// The tag names; returns the series carrying *all* of them (e.g.
+    /// `["gdp", "quarterly"]`).
+    tag_names: Vec<String>,
+    /// Field to order results by.
+    order_by: Option<OrderByArg>,
+    /// Sort direction.
+    sort: Option<SortOrderArg>,
+    /// Maximum number of series to return.
+    limit: Option<u32>,
+}
+
+/// Input parameters for the `get_series_tags` tool.
+#[derive(Debug, Deserialize, JsonSchema)]
+struct GetSeriesTagsParams {
+    /// The FRED series id, e.g. `GNPCA` or `UNRATE`.
+    series_id: String,
 }
 
 /// The MCP server state: the FRED client plus the macro-generated tool router.
@@ -412,6 +445,97 @@ impl FredServer {
             )])),
         }
     }
+
+    #[tool(
+        name = "get_tags",
+        description = "Browse or search FRED's tag vocabulary (keywords such as \"gdp\", \
+                       \"quarterly\", \"nsa\" used to classify series). Optionally filter by \
+                       search text. Returns tags with their group, popularity, and series count."
+    )]
+    async fn get_tags(
+        &self,
+        Parameters(params): Parameters<GetTagsParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let mut request = self.client.tags();
+        if let Some(text) = params.search_text {
+            request = request.search_text(text);
+        }
+        if let Some(sort) = params.sort {
+            request = request.sort_order(sort.into());
+        }
+        if let Some(limit) = params.limit {
+            request = request.limit(limit);
+        }
+
+        match request.send().await {
+            Ok(results) => {
+                let value = serde_json::to_value(&results)
+                    .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+                Ok(CallToolResult::structured(value))
+            }
+            Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(
+                error.to_string(),
+            )])),
+        }
+    }
+
+    #[tool(
+        name = "get_tags_series",
+        description = "List the FRED series carrying ALL of the given tags (faceted discovery), \
+                       with pagination metadata. Supports ordering, sort direction, and a result \
+                       limit."
+    )]
+    async fn get_tags_series(
+        &self,
+        Parameters(params): Parameters<GetTagsSeriesParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let mut request = self.client.tags_series(&params.tag_names);
+        if let Some(order_by) = params.order_by {
+            request = request.order_by(order_by.into());
+        }
+        if let Some(sort) = params.sort {
+            request = request.sort_order(sort.into());
+        }
+        if let Some(limit) = params.limit {
+            request = request.limit(limit);
+        }
+
+        match request.send().await {
+            Ok(results) => {
+                let value = serde_json::to_value(&results)
+                    .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+                Ok(CallToolResult::structured(value))
+            }
+            Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(
+                error.to_string(),
+            )])),
+        }
+    }
+
+    #[tool(
+        name = "get_series_tags",
+        description = "List the tags attached to a FRED series (the reverse of get_tags_series): \
+                       given a series id, what keywords classify it."
+    )]
+    async fn get_series_tags(
+        &self,
+        Parameters(params): Parameters<GetSeriesTagsParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match self
+            .client
+            .series_tags(&SeriesId::new(params.series_id))
+            .await
+        {
+            Ok(results) => {
+                let value = serde_json::to_value(&results)
+                    .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+                Ok(CallToolResult::structured(value))
+            }
+            Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(
+                error.to_string(),
+            )])),
+        }
+    }
 }
 
 /// Parse a `YYYY-MM-DD` date from a tool argument, mapping a bad format to an
@@ -441,9 +565,11 @@ impl ServerHandler for FredServer {
              text), get_series (metadata for a series id), get_observations (a series' date/value \
              observations, with optional date range, units transform, and frequency aggregation), \
              the category tools — get_category, get_category_children (walk the category tree from \
-             the root, id 0), and get_category_series (the series in a category) — and the release \
+             the root, id 0), and get_category_series (the series in a category) — the release \
              tools — get_releases (list publications), get_release, and get_release_series (the \
-             series in a release)."
+             series in a release) — and the tag tools — get_tags (browse/search keywords), \
+             get_tags_series (series carrying a set of tags), and get_series_tags (a series' \
+             tags)."
                 .to_string(),
         );
         info
@@ -551,6 +677,34 @@ mod tests {
         assert_eq!(params.release_id, 53);
         assert!(matches!(params.order_by, Some(OrderByArg::Popularity)));
         assert!(params.sort.is_none());
+    }
+
+    #[test]
+    fn tags_params_deserialize_from_arguments() {
+        let params: GetTagsParams =
+            serde_json::from_value(serde_json::json!({"search_text": "gdp", "sort": "desc"}))
+                .unwrap();
+        assert_eq!(params.search_text.as_deref(), Some("gdp"));
+        assert!(matches!(params.sort, Some(SortOrderArg::Desc)));
+        assert!(params.limit.is_none());
+    }
+
+    #[test]
+    fn tags_series_params_deserialize_names_and_enums() {
+        let params: GetTagsSeriesParams = serde_json::from_value(serde_json::json!({
+            "tag_names": ["gdp", "quarterly"],
+            "order_by": "popularity"
+        }))
+        .unwrap();
+        assert_eq!(params.tag_names, ["gdp", "quarterly"]);
+        assert!(matches!(params.order_by, Some(OrderByArg::Popularity)));
+    }
+
+    #[test]
+    fn series_tags_params_deserialize_from_arguments() {
+        let params: GetSeriesTagsParams =
+            serde_json::from_value(serde_json::json!({"series_id": "GNPCA"})).unwrap();
+        assert_eq!(params.series_id, "GNPCA");
     }
 
     #[test]
