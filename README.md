@@ -28,7 +28,7 @@ Early construction. The library comes first; the CLI and MCP server follow.
 ## Development
 
 A Nix flake provides a reproducible toolchain (recent stable Rust via
-`oxalica/rust-overlay`, plus `cargo-nextest` and `cargo-deny`):
+`oxalica/rust-overlay`, plus `cargo-nextest`, `cargo-deny`, and `bacon`):
 
 ```sh
 nix develop        # enter the dev shell
@@ -39,6 +39,16 @@ Nix is optional — the project builds with a normal Rust toolchain too. Install
 a recent stable Rust (e.g. via `rustup`) and use `cargo` as usual. Either way,
 building is plain `cargo build` / `cargo test`; Nix supplies the environment,
 not the build (see [ADR-0008](docs/adr/0008-nix-flake-dev-environment.md)).
+
+### Pre-push checks
+
+A tracked `pre-push` hook runs formatting, clippy, and the offline test suite —
+the same gate as CI — before a push, and blocks on failure. Enable it once per
+clone (`core.hooksPath` is local git config, not carried by git):
+
+```sh
+git config core.hooksPath .githooks
+```
 
 ## Secrets
 

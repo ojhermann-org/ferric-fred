@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+#
+# pre-push gate — mirrors CI (.github/workflows/ci.yml): formatting, clippy, and
+# the offline test suite must pass before a push leaves this machine. Blocks the
+# push on any failure. cargo-deny is left to CI (it needs the network).
+#
+# Enabled per clone — core.hooksPath is local git config and is NOT carried by
+# git, so on a fresh clone run once:
+#
+#     git config core.hooksPath .githooks
+#
+# Runs through the Nix flake when `nix` is available so the toolchain matches CI
+# exactly; otherwise falls back to a cargo toolchain already on PATH.
+set -euo pipefail
+
+checks='cargo fmt --check \
+  && cargo clippy --all-targets -- -D warnings \
+  && cargo nextest run'
+
+echo "pre-push: running fmt / clippy / tests…"
+if command -v nix >/dev/null 2>&1; then
+  nix develop --command bash -c "$checks"
+else
+  bash -c "$checks"
+fi
+echo "pre-push: all checks passed."
