@@ -21,5 +21,9 @@ chrono = { workspace = true }
 ratatui = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 
+[dev-dependencies]
+assert_cmd = { workspace = true }
+predicates = { workspace = true }
+
 [lints]
 workspace = true

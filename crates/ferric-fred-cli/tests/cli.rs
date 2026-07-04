@@ -1,0 +1,120 @@
+//! Integration tests for the `fred` binary: run the compiled CLI as a
+//! subprocess and assert on its exit status and output.
+//!
+//! The non-ignored tests are fully offline — they exercise argument parsing,
+//! validation, and the missing-key error path, none of which touch the network
+//! (they fail during `clap` parsing or before any request is built). The
+//! `#[ignore]`d tests hit the live FRED API and need `FRED_API_KEY`.
+
+use assert_cmd::Command;
+use predicates::prelude::*;
+
+/// A `Command` for the `fred` binary with `FRED_API_KEY` removed, so a key in
+/// the ambient environment can't accidentally satisfy `Client::from_env`
+/// during the offline tests.
+fn fred() -> Command {
+    let mut cmd = Command::cargo_bin("fred").expect("the `fred` binary builds");
+    cmd.env_remove("FRED_API_KEY");
+    cmd
+}
+
+#[test]
+fn help_lists_every_subcommand() {
+    fred()
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("search"))
+        .stdout(predicate::str::contains("series"))
+        .stdout(predicate::str::contains("observations"))
+        .stdout(predicate::str::contains("chart"));
+}
+
+#[test]
+fn version_is_reported() {
+    fred()
+        .arg("--version")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("fred"));
+}
+
+#[test]
+fn no_subcommand_is_a_usage_error() {
+    fred()
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Usage"));
+}
+
+#[test]
+fn unknown_subcommand_is_rejected() {
+    fred()
+        .arg("teleport")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("unrecognized subcommand"));
+}
+
+#[test]
+fn search_requires_text() {
+    fred()
+        .arg("search")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("required"));
+}
+
+#[test]
+fn invalid_date_is_rejected_before_any_request() {
+    fred()
+        .args(["observations", "GNPCA", "--start", "not-a-date"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("invalid value"));
+}
+
+#[test]
+fn invalid_units_value_lists_the_choices() {
+    fred()
+        .args(["observations", "GNPCA", "--units", "bogus"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("invalid value"))
+        .stderr(predicate::str::contains("pch"));
+}
+
+#[test]
+fn missing_api_key_is_a_friendly_error() {
+    fred()
+        .args(["series", "GNPCA"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("FRED_API_KEY"));
+}
+
+// --- Live tests: hit the real FRED API and require FRED_API_KEY. Run with
+// `--run-ignored all` (nextest) or `--ignored` inside the direnv/infisical
+// shell. These build a fresh Command so the inherited FRED_API_KEY survives. ---
+
+#[test]
+#[ignore = "hits the live FRED API; requires FRED_API_KEY"]
+fn search_succeeds_against_live_fred() {
+    Command::cargo_bin("fred")
+        .unwrap()
+        .args(["search", "unemployment rate", "--limit", "1"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("match(es)"));
+}
+
+#[test]
+#[ignore = "hits the live FRED API; requires FRED_API_KEY"]
+fn observations_succeeds_against_live_fred() {
+    Command::cargo_bin("fred")
+        .unwrap()
+        .args(["observations", "GNPCA", "--limit", "1"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("observation(s)"));
+}
