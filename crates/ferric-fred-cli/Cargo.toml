@@ -1,0 +1,22 @@
+[package]
+name = "ferric-fred-cli"
+description = "Command-line interface for FRED (Federal Reserve Economic Data), built on the ferric-fred client."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "fred"
+path = "src/main.rs"
+
+[dependencies]
+# The library, by workspace path — a breaking library change can't compile-pass
+# the CLI without updating it (ADR-0002).
+ferric-fred = { path = "../ferric-fred" }
+anyhow = { workspace = true }
+clap = { workspace = true }
+chrono = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+
+[lints]
+workspace = true

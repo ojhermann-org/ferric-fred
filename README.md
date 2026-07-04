@@ -23,7 +23,21 @@ are managed on top of that (see the ADRs).
 
 ## Status
 
-Early construction. The library comes first; the CLI and MCP server follow.
+Early construction. The library covers the `series`, `series/observations`, and
+`series/search` endpoints; the `fred` CLI (this repo's first consumer) can
+search, show series metadata, and print observations. The MCP server follows.
+
+## Using the CLI
+
+The `fred` binary reads `FRED_API_KEY` from the environment (see [Secrets](#secrets)):
+
+```sh
+fred search "unemployment rate" --limit 3   # find series by text
+fred series GNPCA                            # show one series' metadata
+fred observations GNPCA --start 2020-01-01   # print observations (--end, --limit too)
+```
+
+Run it from the workspace with `cargo run -p ferric-fred-cli -- <args>`.
 
 ## Development
 

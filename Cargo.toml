@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/ferric-fred"]
+members = ["crates/ferric-fred", "crates/ferric-fred-cli"]
 
 # Shared metadata, dependency versions, and lints, inherited by every member
 # crate via `field.workspace = true` (see ADR-0002).
@@ -20,6 +20,10 @@ serde_json = "1"
 thiserror = "2"
 chrono = { version = "0.4", default-features = false, features = ["serde", "std"] }
 tokio = { version = "1", default-features = false }
+
+# Binary-only (the CLI): ergonomic error context (ADR-0004) and arg parsing.
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
