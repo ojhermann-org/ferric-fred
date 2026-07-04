@@ -22,9 +22,9 @@ if command -v infisical >/dev/null 2>&1; then
   if _ff_secrets="$(infisical export \
         --format=dotenv-export \
         --env="${INFISICAL_ENV:-dev}" \
-        --path="${INFISICAL_PATH:-/}" 2>/dev/null)" && [ -n "$_ff_secrets" ]; then
+        --path="${INFISICAL_PATH:-/shared}" 2>/dev/null)" && [ -n "$_ff_secrets" ]; then
     eval "$_ff_secrets"
-    log_status "infisical: injected secrets (env=${INFISICAL_ENV:-dev} path=${INFISICAL_PATH:-/})"
+    log_status "infisical: injected secrets (env=${INFISICAL_ENV:-dev} path=${INFISICAL_PATH:-/shared})"
   else
     log_status "infisical: nothing injected — run 'infisical login' + 'infisical init', or set secrets in the untracked .envrc"
   fi

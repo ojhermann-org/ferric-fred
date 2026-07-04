@@ -26,7 +26,7 @@ CLI:
   `eval "$(infisical export --format=dotenv-export --env=… --path=…)"`. The
   injection is **non-fatal**: if Infisical is absent or not logged in, nothing
   is injected and we fall through to the local `.envrc`. `env`/`path` default to
-  `dev` / `/` and are overridable via `INFISICAL_ENV` / `INFISICAL_PATH`.
+  `dev` / `/shared` and are overridable via `INFISICAL_ENV` / `INFISICAL_PATH`.
 - **`.envrc.example`** — committed template; `cp .envrc.example .envrc`.
 - **`.envrc`** — **git-ignored**, local entry point. Does `source_env
   .envrc.shared` and is the only place a raw secret (`export FRED_API_KEY=…`)
@@ -38,7 +38,7 @@ CLI:
 - **Auth:** interactive `infisical login` (user identity) per machine for local
   dev. A **machine identity + token** (`infisical run --token …`) is the path
   for CI, to be specified when we wire CI/release (later ADR).
-- **Secret convention:** `FRED_API_KEY` at `--env=dev --path=/` for local dev.
+- **Secret convention:** `FRED_API_KEY` at `--env=dev --path=/shared` for local dev.
 
 The library code itself only reads `std::env` (e.g. `FRED_API_KEY`); it has **no
 dependency on Infisical**. Infisical is purely how the environment gets

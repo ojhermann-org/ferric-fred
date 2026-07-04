@@ -56,7 +56,7 @@ infisical init              # link this dir → project, writes .infisical.json
 direnv allow                # load the shell + inject secrets on cd-in
 ```
 
-Store the key with `infisical secrets set FRED_API_KEY="…" --env=dev --path=/`.
+Store the key with `infisical secrets set FRED_API_KEY="…" --env=dev --path=/shared`.
 No Infisical? Just set it directly in your git-ignored `.envrc`:
 `export FRED_API_KEY="…"`. The library only reads the env var — it has no
 dependency on Infisical.
