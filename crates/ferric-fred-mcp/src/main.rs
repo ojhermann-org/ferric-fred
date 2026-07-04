@@ -6,9 +6,10 @@
 //!
 //! Tools: `search_series`, `get_series`, `get_observations`, the category tools
 //! (`get_category`, `get_category_children`, `get_category_series`), the release
-//! tools (`get_releases`, `get_release`, `get_release_series`), and the tag
-//! tools (`get_tags`, `get_related_tags`, `get_tags_series`, `get_series_tags`)
-//! — one per library endpoint, with typed inputs (see [`params`]).
+//! tools (`get_releases`, `get_release`, `get_release_series`), the source tools
+//! (`get_sources`, `get_source`, `get_source_releases`), and the tag tools
+//! (`get_tags`, `get_related_tags`, `get_tags_series`, `get_series_tags`) — one
+//! per library endpoint, with typed inputs (see [`params`]).
 //!
 //! Note: over stdio, **stdout is the protocol channel** — nothing may be printed
 //! to it. Any diagnostics must go to stderr.
@@ -17,7 +18,7 @@ mod params;
 
 use anyhow::Context;
 use chrono::NaiveDate;
-use ferric_fred::{CategoryId, Client, ReleaseId, SeriesId};
+use ferric_fred::{CategoryId, Client, ReleaseId, SeriesId, SourceId};
 use rmcp::handler::server::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, ContentBlock, Implementation, ServerCapabilities, ServerInfo};
@@ -114,6 +115,33 @@ struct ReleaseSeriesParams {
     limit: Option<u32>,
     /// Field to order results by.
     order_by: Option<OrderByArg>,
+    /// Sort direction.
+    sort: Option<SortOrderArg>,
+}
+
+/// Input parameters for the `get_sources` tool.
+#[derive(Debug, Deserialize, JsonSchema)]
+struct GetSourcesParams {
+    /// Maximum number of sources to return.
+    limit: Option<u32>,
+    /// Sort direction by source id.
+    sort: Option<SortOrderArg>,
+}
+
+/// Input parameters for the `get_source` tool.
+#[derive(Debug, Deserialize, JsonSchema)]
+struct GetSourceParams {
+    /// The FRED source id, e.g. 18 (U.S. Bureau of Economic Analysis).
+    source_id: u32,
+}
+
+/// Input parameters for the `get_source_releases` tool.
+#[derive(Debug, Deserialize, JsonSchema)]
+struct GetSourceReleasesParams {
+    /// The FRED source id.
+    source_id: u32,
+    /// Maximum number of releases to return.
+    limit: Option<u32>,
     /// Sort direction.
     sort: Option<SortOrderArg>,
 }
@@ -460,6 +488,86 @@ impl FredServer {
     }
 
     #[tool(
+        name = "get_sources",
+        description = "List FRED data sources (the organizations that produce releases, e.g. the \
+                       Bureau of Economic Analysis), with pagination metadata. Supports sort \
+                       direction and a result limit."
+    )]
+    async fn get_sources(
+        &self,
+        Parameters(params): Parameters<GetSourcesParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let mut request = self.client.sources();
+        if let Some(limit) = params.limit {
+            request = request.limit(limit);
+        }
+        if let Some(sort) = params.sort {
+            request = request.sort_order(sort.into());
+        }
+
+        match request.send().await {
+            Ok(results) => {
+                let value = serde_json::to_value(&results)
+                    .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+                Ok(CallToolResult::structured(value))
+            }
+            Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(
+                error.to_string(),
+            )])),
+        }
+    }
+
+    #[tool(
+        name = "get_source",
+        description = "Fetch a FRED data source by its id (e.g. 18 = U.S. Bureau of Economic \
+                       Analysis): its name and link."
+    )]
+    async fn get_source(
+        &self,
+        Parameters(params): Parameters<GetSourceParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match self.client.source(SourceId::new(params.source_id)).await {
+            Ok(source) => {
+                let value = serde_json::to_value(&source)
+                    .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+                Ok(CallToolResult::structured(value))
+            }
+            Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(
+                error.to_string(),
+            )])),
+        }
+    }
+
+    #[tool(
+        name = "get_source_releases",
+        description = "List the releases produced by a FRED data source, with pagination metadata. \
+                       Supports sort direction and a result limit."
+    )]
+    async fn get_source_releases(
+        &self,
+        Parameters(params): Parameters<GetSourceReleasesParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let mut request = self.client.source_releases(SourceId::new(params.source_id));
+        if let Some(limit) = params.limit {
+            request = request.limit(limit);
+        }
+        if let Some(sort) = params.sort {
+            request = request.sort_order(sort.into());
+        }
+
+        match request.send().await {
+            Ok(results) => {
+                let value = serde_json::to_value(&results)
+                    .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+                Ok(CallToolResult::structured(value))
+            }
+            Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(
+                error.to_string(),
+            )])),
+        }
+    }
+
+    #[tool(
         name = "get_tags",
         description = "Browse or search FRED's tag vocabulary (keywords such as \"gdp\", \
                        \"quarterly\", \"nsa\" used to classify series). Optionally filter by \
@@ -613,9 +721,11 @@ impl ServerHandler for FredServer {
              the category tools — get_category, get_category_children (walk the category tree from \
              the root, id 0), and get_category_series (the series in a category) — the release \
              tools — get_releases (list publications), get_release, and get_release_series (the \
-             series in a release) — and the tag tools — get_tags (browse/search keywords), \
-             get_related_tags (tags co-occurring with a seed set), get_tags_series (series \
-             carrying a set of tags), and get_series_tags (a series' tags)."
+             series in a release) — the source tools — get_sources (list data providers), \
+             get_source, and get_source_releases (the releases from a source) — and the tag \
+             tools — get_tags (browse/search keywords), get_related_tags (tags co-occurring with \
+             a seed set), get_tags_series (series carrying a set of tags), and get_series_tags (a \
+             series' tags)."
                 .to_string(),
         );
         info
@@ -751,6 +861,19 @@ mod tests {
         let params: GetSeriesTagsParams =
             serde_json::from_value(serde_json::json!({"series_id": "GNPCA"})).unwrap();
         assert_eq!(params.series_id, "GNPCA");
+    }
+
+    #[test]
+    fn source_params_deserialize_from_arguments() {
+        let single: GetSourceParams =
+            serde_json::from_value(serde_json::json!({"source_id": 18})).unwrap();
+        assert_eq!(single.source_id, 18);
+
+        let releases: GetSourceReleasesParams =
+            serde_json::from_value(serde_json::json!({"source_id": 18, "sort": "desc"})).unwrap();
+        assert_eq!(releases.source_id, 18);
+        assert!(matches!(releases.sort, Some(SortOrderArg::Desc)));
+        assert!(releases.limit.is_none());
     }
 
     #[test]
