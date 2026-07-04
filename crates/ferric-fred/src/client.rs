@@ -395,6 +395,48 @@ impl Client {
         .await
     }
 
+    /// Fetch the categories a series belongs to (the `fred/series/categories`
+    /// endpoint) — the reverse of [`category_series`](Client::category_series).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails to send, FRED returns a non-success
+    /// status, or the response body cannot be deserialized.
+    pub async fn series_categories(&self, series_id: &SeriesId) -> Result<Vec<Category>> {
+        let response: CategoriesResponse = self
+            .get(
+                "/series/categories",
+                &[("series_id", series_id.as_str().to_owned())],
+            )
+            .await?;
+        Ok(response.categories)
+    }
+
+    /// Fetch the release a series belongs to (the `fred/series/release`
+    /// endpoint) — the reverse of [`release_series`](Client::release_series).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails to send, FRED returns a non-success
+    /// status, or the response body cannot be deserialized.
+    pub async fn series_release(&self, series_id: &SeriesId) -> Result<Release> {
+        let response: ReleaseResponse = self
+            .get(
+                "/series/release",
+                &[("series_id", series_id.as_str().to_owned())],
+            )
+            .await?;
+        response
+            .releases
+            .into_iter()
+            .next()
+            .ok_or_else(|| Error::Api {
+                status: 200,
+                code: None,
+                message: format!("FRED returned no release for series `{series_id}`"),
+            })
+    }
+
     /// Begin a request listing all FRED data sources (the `fred/sources`
     /// endpoint) — the organizations that produce releases.
     ///
@@ -1041,5 +1083,48 @@ mod tests {
             .expect("source/releases parse");
         assert_eq!(results.count, 1);
         assert_eq!(results.releases[0].id, ReleaseId::new(53));
+    }
+
+    #[tokio::test]
+    async fn series_categories_parse() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/series/categories"))
+            .and(query_param("series_id", "GNPCA"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"categories":[
+                    {"id":106,"name":"Gross National Product","parent_id":18},
+                    {"id":18,"name":"National Income & Product Accounts","parent_id":13}
+                ]}"#,
+            ))
+            .mount(&server)
+            .await;
+
+        let categories = client_for(&server)
+            .series_categories(&SeriesId::new("GNPCA"))
+            .await
+            .expect("series/categories parse");
+        assert_eq!(categories.len(), 2);
+        assert_eq!(categories[0].id, CategoryId::new(106));
+    }
+
+    #[tokio::test]
+    async fn series_release_parses() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/series/release"))
+            .and(query_param("series_id", "GNPCA"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"releases":[{"id":53,"name":"Gross Domestic Product","press_release":true}]}"#,
+            ))
+            .mount(&server)
+            .await;
+
+        let release = client_for(&server)
+            .series_release(&SeriesId::new("GNPCA"))
+            .await
+            .expect("series/release parse");
+        assert_eq!(release.id, ReleaseId::new(53));
+        assert_eq!(release.name, "Gross Domestic Product");
     }
 }

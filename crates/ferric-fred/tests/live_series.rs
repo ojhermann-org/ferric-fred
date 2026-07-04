@@ -30,3 +30,21 @@ async fn fetches_gnpca_series_metadata() {
     );
     assert!(series.observation_start <= series.observation_end);
 }
+
+#[tokio::test]
+#[ignore = "hits the live FRED API; requires FRED_API_KEY"]
+async fn series_reverse_lookups_resolve() {
+    let client = Client::from_env().expect("FRED_API_KEY should be set for the live test");
+    let gnpca = SeriesId::new("GNPCA");
+
+    // The categories GNPCA belongs to.
+    let categories = client
+        .series_categories(&gnpca)
+        .await
+        .expect("series/categories");
+    assert!(!categories.is_empty());
+
+    // The release GNPCA belongs to.
+    let release = client.series_release(&gnpca).await.expect("series/release");
+    assert!(!release.name.is_empty());
+}
