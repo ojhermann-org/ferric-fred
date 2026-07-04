@@ -1,7 +1,10 @@
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 
-use crate::{Error, Observation, ObservationsRequest, Result, Series, SeriesId};
+use crate::{
+    Error, Observation, ObservationsRequest, Result, Series, SeriesId, SeriesSearchRequest,
+    SeriesSearchResults,
+};
 
 /// Base URL for the FRED REST API.
 const FRED_BASE_URL: &str = "https://api.stlouisfed.org/fred";
@@ -85,6 +88,36 @@ impl Client {
                 code: None,
                 message: format!("FRED returned no series for id `{series_id}`"),
             })
+    }
+
+    /// Begin a search over series (the `fred/series/search` endpoint).
+    ///
+    /// Returns a builder; set optional parameters (search type, ordering, sort,
+    /// paging) and call [`SeriesSearchRequest::send`] to run it.
+    ///
+    /// ```no_run
+    /// # async fn run(client: &ferric_fred::Client) -> ferric_fred::Result<()> {
+    /// use ferric_fred::OrderBy;
+    /// let results = client
+    ///     .search("industrial production")
+    ///     .order_by(OrderBy::Popularity)
+    ///     .limit(5)
+    ///     .send()
+    ///     .await?;
+    /// println!("{} matches", results.count);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn search(&self, search_text: impl Into<String>) -> SeriesSearchRequest<'_> {
+        SeriesSearchRequest::new(self, search_text.into())
+    }
+
+    /// Run a search request (invoked by [`SeriesSearchRequest::send`]).
+    pub(crate) async fn execute_search(
+        &self,
+        request: &SeriesSearchRequest<'_>,
+    ) -> Result<SeriesSearchResults> {
+        self.get("/series/search", &request.query_params()).await
     }
 
     /// GET `path` with `params` plus `api_key`/`file_type`, then deserialize the

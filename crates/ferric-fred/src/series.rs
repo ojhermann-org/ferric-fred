@@ -45,6 +45,25 @@ pub struct Series {
     pub last_updated: String,
 }
 
+/// A page of `series/search` results: the matching series plus FRED's
+/// pagination metadata. `count` is the total number of matches across all
+/// pages, not just this one — use it with `offset`/`limit` to page.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct SeriesSearchResults {
+    /// The matching series on this page. (FRED names the array `seriess`.)
+    #[serde(rename = "seriess")]
+    pub series: Vec<Series>,
+
+    /// Total number of matches across all pages.
+    pub count: u32,
+
+    /// Offset of this page into the full result set.
+    pub offset: u32,
+
+    /// Page-size limit that FRED applied.
+    pub limit: u32,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -105,5 +124,25 @@ mod tests {
         }"#;
         let series: Series = serde_json::from_str(json).unwrap();
         assert_eq!(series.notes, None);
+    }
+
+    #[test]
+    fn deserializes_search_results_with_pagination() {
+        let json = format!(
+            r#"{{
+                "order_by": "search_rank",
+                "sort_order": "desc",
+                "count": 1,
+                "offset": 0,
+                "limit": 1000,
+                "seriess": [{GNPCA_JSON}]
+            }}"#
+        );
+        let results: SeriesSearchResults = serde_json::from_str(&json).unwrap();
+        assert_eq!(results.count, 1);
+        assert_eq!(results.offset, 0);
+        assert_eq!(results.limit, 1000);
+        assert_eq!(results.series.len(), 1);
+        assert_eq!(results.series[0].id, SeriesId::new("GNPCA"));
     }
 }

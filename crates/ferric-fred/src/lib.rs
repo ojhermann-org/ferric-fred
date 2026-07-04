@@ -26,8 +26,11 @@ mod frequency;
 mod ids;
 mod observation;
 mod observations_request;
+mod order_by;
+mod search_type;
 mod seasonal_adjustment;
 mod series;
+mod series_search_request;
 mod sort_order;
 mod units;
 
@@ -38,8 +41,11 @@ pub use frequency::Frequency;
 pub use ids::SeriesId;
 pub use observation::Observation;
 pub use observations_request::ObservationsRequest;
+pub use order_by::OrderBy;
+pub use search_type::SearchType;
 pub use seasonal_adjustment::SeasonalAdjustment;
-pub use series::Series;
+pub use series::{Series, SeriesSearchResults};
+pub use series_search_request::SeriesSearchRequest;
 pub use sort_order::SortOrder;
 pub use units::Units;
 
