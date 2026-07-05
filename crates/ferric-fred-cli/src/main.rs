@@ -88,11 +88,13 @@ enum Command {
         #[arg(long)]
         sort: Option<SortOrderArg>,
     },
-    /// List FRED data releases, show one, or list a release's series or sources.
+    /// List FRED data releases, show one, or list a release's series, sources,
+    /// or dates.
     ///
-    /// With no id, lists all releases. With an id, shows that release; add
-    /// `--series` to list the series it publishes, or `--sources` to list the
-    /// sources it draws from.
+    /// With no id, lists all releases — or, with `--dates`, the publication
+    /// calendar across every release. With an id, shows that release; add
+    /// `--series` to list the series it publishes, `--sources` to list the
+    /// sources it draws from, or `--dates` for that release's own dates.
     Release {
         /// Release id. Omit to list all releases.
         id: Option<u32>,
@@ -102,7 +104,15 @@ enum Command {
         /// With an id: list the release's sources instead of its metadata.
         #[arg(long, requires = "id")]
         sources: bool,
-        /// Maximum number of results (applies to the list and to `--series`).
+        /// List release dates: the calendar across all releases (no id) or one
+        /// release's dates (with an id).
+        #[arg(long, conflicts_with_all = ["series", "sources"])]
+        dates: bool,
+        /// With `--dates`: include dates that have no data yet (e.g. scheduled
+        /// future releases).
+        #[arg(long, requires = "dates")]
+        include_no_data: bool,
+        /// Maximum number of results (applies to the list, `--series`, and `--dates`).
         #[arg(long)]
         limit: Option<u32>,
         /// With `--series`: field to order series by.
@@ -280,10 +290,28 @@ async fn main() -> Result<()> {
             id,
             series,
             sources,
+            dates,
+            include_no_data,
             limit,
             order_by,
             sort,
-        } => release(&client, id, series, sources, limit, order_by, sort, json).await,
+        } => {
+            release(
+                &client,
+                ReleaseArgs {
+                    id,
+                    series,
+                    sources,
+                    dates,
+                    include_no_data,
+                    limit,
+                    order_by,
+                    sort,
+                },
+                json,
+            )
+            .await
+        }
         Command::Source {
             id,
             releases,
@@ -504,22 +532,68 @@ async fn category(
     Ok(())
 }
 
-// Positional handler args mirror the sibling `category`/`source` handlers; the
-// two view flags (`--series`/`--sources`) are a clap-level concern, resolved here.
-#[allow(clippy::fn_params_excessive_bools, clippy::too_many_arguments)]
-async fn release(
-    client: &Client,
+/// Parsed arguments for the `release` command. A struct rather than positional
+/// parameters because `release` now carries three mutually-exclusive view flags
+/// (`--series`/`--sources`/`--dates`) plus their modifiers.
+struct ReleaseArgs {
     id: Option<u32>,
     series: bool,
     sources: bool,
+    dates: bool,
+    include_no_data: bool,
     limit: Option<u32>,
     order_by: Option<OrderByArg>,
     sort: Option<SortOrderArg>,
-    json: bool,
-) -> Result<()> {
+}
+
+async fn release(client: &Client, args: ReleaseArgs, json: bool) -> Result<()> {
+    let ReleaseArgs {
+        id,
+        series,
+        sources,
+        dates,
+        include_no_data,
+        limit,
+        order_by,
+        sort,
+    } = args;
+
     // clap guarantees `--series`/`--sources` are only set alongside an id, so
-    // here (no id) both are false — just list all releases.
+    // here (no id) both are false. `--dates` is allowed without an id and lists
+    // the calendar across every release; otherwise just list all releases.
     let Some(id) = id else {
+        if dates {
+            let mut request = client.releases_dates();
+            if let Some(limit) = limit {
+                request = request.limit(limit);
+            }
+            if let Some(sort) = sort {
+                request = request.sort_order(sort.into());
+            }
+            if include_no_data {
+                request = request.include_dates_with_no_data(true);
+            }
+
+            let results = request
+                .send()
+                .await
+                .context("listing release dates failed")?;
+
+            if json {
+                return print_json(&results);
+            }
+
+            // `releases/dates` spans every release, so each row names its own.
+            println!("{} release dates:", results.count);
+            for date in &results.release_dates {
+                match &date.release_name {
+                    Some(name) => println!("{}\t{}\t{}", date.date, date.release_id, name),
+                    None => println!("{}\t{}", date.date, date.release_id),
+                }
+            }
+            return Ok(());
+        }
+
         let mut request = client.releases();
         if let Some(limit) = limit {
             request = request.limit(limit);
@@ -585,6 +659,35 @@ async fn release(
         println!("{} sources for release {id}:", sources.len());
         for source in &sources {
             println!("{}\t{}", source.id, source.name);
+        }
+        return Ok(());
+    }
+
+    if dates {
+        let mut request = client.release_dates(release_id);
+        if let Some(limit) = limit {
+            request = request.limit(limit);
+        }
+        if let Some(sort) = sort {
+            request = request.sort_order(sort.into());
+        }
+        if include_no_data {
+            request = request.include_dates_with_no_data(true);
+        }
+
+        let results = request
+            .send()
+            .await
+            .with_context(|| format!("fetching dates for release {id} failed"))?;
+
+        if json {
+            return print_json(&results);
+        }
+
+        // The release is fixed, so entries omit the name — just print the dates.
+        println!("{} release dates for release {id}:", results.count);
+        for date in &results.release_dates {
+            println!("{}", date.date);
         }
         return Ok(());
     }

@@ -100,6 +100,27 @@ fn release_series_and_sources_conflict() {
 }
 
 #[test]
+fn release_dates_conflicts_with_series() {
+    // --dates is a distinct view; it can't combine with --series/--sources.
+    fred()
+        .args(["release", "53", "--series", "--dates"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("cannot be used with"));
+}
+
+#[test]
+fn release_include_no_data_requires_dates() {
+    // --include-no-data only makes sense with --dates (clap `requires`).
+    fred()
+        .args(["release", "53", "--include-no-data"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("required arguments"))
+        .stderr(predicate::str::contains("--dates"));
+}
+
+#[test]
 fn version_is_reported() {
     fred()
         .arg("--version")
@@ -260,6 +281,19 @@ fn release_list_and_single_and_series() {
         .assert()
         .success()
         .stdout(predicate::str::contains("sources for release 53"));
+
+    // The calendar across all releases, and one release's own dates.
+    fred()
+        .args(["release", "--dates", "--limit", "3"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("release dates:"));
+
+    fred()
+        .args(["release", "53", "--dates", "--limit", "3"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("release dates for release 53"));
 }
 
 #[test]

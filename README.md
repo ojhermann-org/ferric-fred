@@ -52,6 +52,9 @@ fred category 125 --series --limit 5                            # series in a ca
 fred release                                                     # list all data releases
 fred release 53                                                  # a release's metadata
 fred release 53 --series --limit 5                              # series in a release
+fred release 53 --sources                                       # sources a release draws from
+fred release --dates --limit 5                                  # release calendar (all releases)
+fred release 53 --dates                                         # one release's publication dates
 fred source                                                     # list all data sources
 fred source 18                                                  # a source's metadata
 fred source 18 --releases --limit 5                            # releases produced by a source
