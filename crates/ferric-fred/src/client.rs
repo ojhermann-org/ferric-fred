@@ -1779,6 +1779,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn series_updates_sends_time_window_as_yyyymmddhhmm() {
+        use chrono::NaiveDate;
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/series/updates"))
+            .and(query_param("start_time", "201803021420"))
+            .and(query_param("end_time", "201803030905"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(format!(
+                "{{\"count\":1,\"offset\":0,\"limit\":1,\"seriess\":[{SERIES_OBJECT}]}}"
+            )))
+            .mount(&server)
+            .await;
+
+        let start = NaiveDate::from_ymd_opt(2018, 3, 2)
+            .unwrap()
+            .and_hms_opt(14, 20, 0)
+            .unwrap();
+        let end = NaiveDate::from_ymd_opt(2018, 3, 3)
+            .unwrap()
+            .and_hms_opt(9, 5, 0)
+            .unwrap();
+        let results = client_for(&server)
+            .series_updates()
+            .time_window(start, end)
+            .send()
+            .await
+            .expect("series/updates time-window parse");
+        assert_eq!(results.count, 1);
+    }
+
+    #[tokio::test]
     async fn series_vintagedates_send_id_and_parse() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
