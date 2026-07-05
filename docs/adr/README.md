@@ -23,12 +23,12 @@ use them, and [`0000-adr-template.md`](0000-adr-template.md) for the template.
 | [0012](0012-ci-versioning-and-release.md) | CI versioning & release strategy | Accepted |
 | [0013](0013-endpoint-addition-pattern.md) | Endpoint-addition pattern | Accepted |
 | [0014](0014-pre-commit-secret-guard.md) | Pre-commit secret guard | Accepted |
+| [0015](0015-cli-binary-naming.md) | CLI & server binary names | Accepted |
 
 ## Backlog (proposed, not yet written)
 
 Decisions we intend to record, roughly in the order we expect to need them.
 Order and contents will change as we build.
 
-- CLI binary naming (is the CLI binary `fred`?) — small follow-up to ADR-0002
 - Infisical machine-identity token for CI, to run the `#[ignore]` live tests
   there — follow-up to ADR-0009 and ADR-0012

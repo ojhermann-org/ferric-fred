@@ -30,7 +30,8 @@ We will use a **single Cargo workspace** with three member crates:
 - Shared dependency versions and lints are declared once via
   `[workspace.dependencies]` and `[workspace.lints]` and inherited by members.
 - The CLI binary name (e.g. `fred` vs `ferric-fred`) is deferred to a small
-  follow-up decision; it does not affect layout.
+  follow-up decision; it does not affect layout. (Resolved in
+  [ADR-0015](0015-cli-binary-naming.md): the binaries are `fred` and `fred-mcp`.)
 
 We build the library first; the binary crates are added when we reach them.
 
