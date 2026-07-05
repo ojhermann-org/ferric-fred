@@ -45,6 +45,8 @@ The `fred` binary reads `FRED_API_KEY` from the environment (see [Secrets](#secr
 
 ```sh
 fred search "unemployment rate" --order-by popularity --limit 3  # find series by text
+fred search "unemployment rate" --tags --limit 5                 # tag facets of a search
+fred search "unemployment rate" --related-tags monthly --limit 5 # related tags within a search
 fred series GNPCA                                                 # show one series' metadata
 fred observations GDP --units pch --sort desc --limit 4          # transformed observations
 fred observations GDP --frequency annual --aggregation avg       # aggregate to a lower frequency
@@ -52,12 +54,15 @@ fred chart GNPCA --start 1950-01-01                              # interactive t
 fred category                                                    # browse the category tree (root)
 fred category 13                                                 # a category and its children
 fred category 125 --series --limit 5                            # series in a category
+fred category 125 --tags --limit 5                             # tags used by a category's series
+fred category 125 --related-tags trade --limit 5              # tags co-occurring with a seed, in a category
 fred release                                                     # list all data releases
 fred release 53                                                  # a release's metadata
 fred release 53 --series --limit 5                              # series in a release
 fred release 53 --sources                                       # sources a release draws from
 fred release --dates --limit 5                                  # release calendar (all releases)
 fred release 53 --dates                                         # one release's publication dates
+fred release 53 --tags --limit 5                               # tags used by a release's series
 fred source                                                     # list all data sources
 fred source 18                                                  # a source's metadata
 fred source 18 --releases --limit 5                            # releases produced by a source

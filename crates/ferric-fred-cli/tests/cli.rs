@@ -121,6 +121,47 @@ fn release_include_no_data_requires_dates() {
 }
 
 #[test]
+fn category_tag_views_are_mutually_exclusive() {
+    // --tags, --series, and --related-tags share a clap view group.
+    fred()
+        .args(["category", "125", "--tags", "--series"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("cannot be used with"));
+}
+
+#[test]
+fn release_tags_requires_id() {
+    // --tags scopes to a release, so it needs an id (clap `requires`).
+    fred()
+        .args(["release", "--tags"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("required arguments"))
+        .stderr(predicate::str::contains("<ID>"));
+}
+
+#[test]
+fn release_tags_conflicts_with_dates() {
+    // --tags is a distinct view from --series/--sources/--dates.
+    fred()
+        .args(["release", "53", "--tags", "--dates"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("cannot be used with"));
+}
+
+#[test]
+fn search_tags_and_related_tags_conflict() {
+    // The two tag views on `search` are mutually exclusive.
+    fred()
+        .args(["search", "gdp", "--tags", "--related-tags", "monthly"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("cannot be used with"));
+}
+
+#[test]
 fn version_is_reported() {
     fred()
         .arg("--version")
@@ -400,4 +441,46 @@ fn series_categories_and_release_views() {
         .assert()
         .success()
         .stdout(predicate::str::contains("vintage dates for GNPCA"));
+}
+
+#[test]
+#[ignore = "hits the live FRED API; requires FRED_API_KEY"]
+fn scoped_tag_facet_views() {
+    let fred = || Command::cargo_bin("fred").unwrap();
+
+    fred()
+        .args(["category", "125", "--tags", "--limit", "3"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("tags in category 125"));
+
+    fred()
+        .args(["category", "125", "--related-tags", "trade", "--limit", "3"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("tags related to trade in category 125"));
+
+    fred()
+        .args(["release", "53", "--tags", "--limit", "3"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("tags in release 53"));
+
+    fred()
+        .args(["release", "53", "--related-tags", "gdp", "--limit", "3"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("tags related to gdp in release 53"));
+
+    fred()
+        .args(["search", "unemployment", "--tags", "--limit", "3"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("tags for series matching"));
+
+    fred()
+        .args(["search", "unemployment", "--related-tags", "monthly", "--limit", "3"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("tags related to monthly among series matching"));
 }

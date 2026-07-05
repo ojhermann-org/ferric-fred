@@ -11,7 +11,9 @@ mod chart;
 use anyhow::{Context, Result};
 use chrono::NaiveDate;
 use clap::{Args, Parser, Subcommand};
-use ferric_fred::{CategoryId, Client, ObservationsRequest, ReleaseId, SeriesId, SourceId};
+use ferric_fred::{
+    CategoryId, Client, ObservationsRequest, ReleaseId, SeriesId, SourceId, TagsRequest,
+};
 
 use args::{AggregationArg, FrequencyArg, OrderByArg, SortOrderArg, UnitsArg, UpdatesFilterArg};
 
@@ -30,13 +32,25 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// Search for series matching text.
+    /// Search for series matching text, or the tags of the matching series.
+    ///
+    /// By default lists the matching series. With `--tags`, lists the tags used
+    /// by those series; with `--related-tags`, the tags co-occurring with a seed
+    /// set among them.
     Search {
         /// Words to search for.
         text: String,
+        /// Show the tags of the matching series instead of the series.
+        #[arg(long, group = "view")]
+        tags: bool,
+        /// Show the tags co-occurring with these seed tags (comma-separated)
+        /// among the matching series, e.g. --related-tags monthly,nsa.
+        #[arg(long, value_delimiter = ',', value_name = "TAGS", group = "view")]
+        related_tags: Vec<String>,
         /// Maximum number of results to show.
         #[arg(long, default_value_t = 10)]
         limit: u32,
-        /// Field to order results by.
+        /// With the default series view: field to order results by.
         #[arg(long)]
         order_by: Option<OrderByArg>,
         /// Sort order.
@@ -67,34 +81,43 @@ enum Command {
         #[command(flatten)]
         options: ObservationOptions,
     },
-    /// Browse the FRED category tree, or list a category's series.
+    /// Browse the FRED category tree, or list a category's series or tags.
     ///
     /// With no flags, prints the category and its child categories (the root,
-    /// id 0, by default). With `--series`, lists the series in the category.
+    /// id 0, by default). With `--series`, lists the series in the category;
+    /// with `--tags` / `--related-tags`, the tags used by those series.
     Category {
         /// Category id (default: 0, the tree root).
         #[arg(default_value_t = 0)]
         id: u32,
         /// List the series in the category instead of its child categories.
-        #[arg(long)]
+        #[arg(long, group = "view")]
         series: bool,
-        /// With `--series`: maximum number of series to return.
+        /// List the tags used by the category's series.
+        #[arg(long, group = "view")]
+        tags: bool,
+        /// List the tags co-occurring with these seed tags (comma-separated)
+        /// within the category, e.g. --related-tags gdp,quarterly.
+        #[arg(long, value_delimiter = ',', value_name = "TAGS", group = "view")]
+        related_tags: Vec<String>,
+        /// With `--series`/`--tags`/`--related-tags`: maximum number of results.
         #[arg(long)]
         limit: Option<u32>,
         /// With `--series`: field to order results by.
         #[arg(long)]
         order_by: Option<OrderByArg>,
-        /// With `--series`: sort order.
+        /// With `--series`/`--tags`/`--related-tags`: sort order.
         #[arg(long)]
         sort: Option<SortOrderArg>,
     },
     /// List FRED data releases, show one, or list a release's series, sources,
-    /// or dates.
+    /// dates, or tags.
     ///
     /// With no id, lists all releases — or, with `--dates`, the publication
     /// calendar across every release. With an id, shows that release; add
     /// `--series` to list the series it publishes, `--sources` to list the
-    /// sources it draws from, or `--dates` for that release's own dates.
+    /// sources it draws from, `--dates` for that release's own dates, or
+    /// `--tags` / `--related-tags` for the tags of its series.
     Release {
         /// Release id. Omit to list all releases.
         id: Option<u32>,
@@ -112,7 +135,15 @@ enum Command {
         /// future releases).
         #[arg(long, requires = "dates")]
         include_no_data: bool,
-        /// Maximum number of results (applies to the list, `--series`, and `--dates`).
+        /// With an id: list the tags used by the release's series.
+        #[arg(long, requires = "id", conflicts_with_all = ["series", "sources", "dates", "related_tags"])]
+        tags: bool,
+        /// With an id: list the tags co-occurring with these seed tags
+        /// (comma-separated) within the release, e.g. --related-tags gdp.
+        #[arg(long, requires = "id", value_delimiter = ',', value_name = "TAGS",
+              conflicts_with_all = ["series", "sources", "dates", "tags"])]
+        related_tags: Vec<String>,
+        /// Maximum number of results (applies to the list, `--series`, `--dates`, and tag views).
         #[arg(long)]
         limit: Option<u32>,
         /// With `--series`: field to order series by.
@@ -272,26 +303,61 @@ async fn main() -> Result<()> {
     match cli.command {
         Command::Search {
             text,
+            tags,
+            related_tags,
             limit,
             order_by,
             sort,
-        } => search(&client, &text, limit, order_by, sort, json).await,
+        } => {
+            search(
+                &client,
+                SearchArgs {
+                    text,
+                    tags,
+                    related_tags,
+                    limit,
+                    order_by,
+                    sort,
+                },
+                json,
+            )
+            .await
+        }
         Command::Series { id, view } => series(&client, &id, view.selected(), json).await,
         Command::Observations { id, options } => observations(&client, &id, &options, json).await,
         Command::Chart { id, options } => chart_command(&client, &id, &options).await,
         Command::Category {
             id,
             series,
+            tags,
+            related_tags,
             limit,
             order_by,
             sort,
-        } => category(&client, id, series, limit, order_by, sort, json).await,
+        } => {
+            category(
+                &client,
+                CategoryArgs {
+                    id,
+                    series,
+                    tags,
+                    related_tags,
+                    limit,
+                    order_by,
+                    sort,
+                },
+                json,
+            )
+            .await
+        }
         Command::Release {
             id,
             series,
             sources,
             dates,
             include_no_data,
+            tags,
+            related_tags,
             limit,
             order_by,
             sort,
@@ -304,6 +370,8 @@ async fn main() -> Result<()> {
                     sources,
                     dates,
                     include_no_data,
+                    tags,
+                    related_tags,
                     limit,
                     order_by,
                     sort,
@@ -330,15 +398,84 @@ fn print_json<T: serde::Serialize>(value: &T) -> Result<()> {
     Ok(())
 }
 
-async fn search(
-    client: &Client,
-    text: &str,
+/// Run a scoped tags request (applying limit/sort), then print the resulting
+/// tags as text — or as JSON under `--json`. Shared by the tag-facet views on
+/// the `category`, `release`, and `search` commands.
+async fn print_tags_result(
+    request: TagsRequest<'_>,
+    limit: Option<u32>,
+    sort: Option<SortOrderArg>,
+    heading: &str,
+    json: bool,
+) -> Result<()> {
+    let mut request = request;
+    if let Some(limit) = limit {
+        request = request.limit(limit);
+    }
+    if let Some(sort) = sort {
+        request = request.sort_order(sort.into());
+    }
+
+    let results = request
+        .send()
+        .await
+        .with_context(|| format!("fetching {heading} failed"))?;
+
+    if json {
+        return print_json(&results);
+    }
+
+    println!("{} {heading}:", results.count);
+    print_tag_lines(&results.tags);
+    Ok(())
+}
+
+/// Parsed arguments for the `search` command: a series search, or (with `--tags`
+/// / `--related-tags`) the tag facets of the matching series.
+struct SearchArgs {
+    text: String,
+    tags: bool,
+    related_tags: Vec<String>,
     limit: u32,
     order_by: Option<OrderByArg>,
     sort: Option<SortOrderArg>,
-    json: bool,
-) -> Result<()> {
-    let mut request = client.search(text).limit(limit);
+}
+
+async fn search(client: &Client, args: SearchArgs, json: bool) -> Result<()> {
+    let SearchArgs {
+        text,
+        tags,
+        related_tags,
+        limit,
+        order_by,
+        sort,
+    } = args;
+
+    if tags {
+        return print_tags_result(
+            client.series_search_tags(text.as_str()),
+            Some(limit),
+            sort,
+            &format!("tags for series matching {text:?}"),
+            json,
+        )
+        .await;
+    }
+    if !related_tags.is_empty() {
+        return print_tags_result(
+            client.series_search_related_tags(text.as_str(), &related_tags),
+            Some(limit),
+            sort,
+            &format!(
+                "tags related to {} among series matching {text:?}",
+                related_tags.join(", ")
+            ),
+            json,
+        )
+        .await;
+    }
+
+    let mut request = client.search(text.as_str()).limit(limit);
     if let Some(order_by) = order_by {
         request = request.order_by(order_by.into());
     }
@@ -463,16 +600,50 @@ async fn series(client: &Client, id: &str, view: SeriesView, json: bool) -> Resu
     Ok(())
 }
 
-async fn category(
-    client: &Client,
+/// Parsed arguments for the `category` command: browse the tree, or list a
+/// category's series or tag facets.
+struct CategoryArgs {
     id: u32,
     series: bool,
+    tags: bool,
+    related_tags: Vec<String>,
     limit: Option<u32>,
     order_by: Option<OrderByArg>,
     sort: Option<SortOrderArg>,
-    json: bool,
-) -> Result<()> {
+}
+
+async fn category(client: &Client, args: CategoryArgs, json: bool) -> Result<()> {
+    let CategoryArgs {
+        id,
+        series,
+        tags,
+        related_tags,
+        limit,
+        order_by,
+        sort,
+    } = args;
     let category_id = CategoryId::new(id);
+
+    if tags {
+        return print_tags_result(
+            client.category_tags(category_id),
+            limit,
+            sort,
+            &format!("tags in category {id}"),
+            json,
+        )
+        .await;
+    }
+    if !related_tags.is_empty() {
+        return print_tags_result(
+            client.category_related_tags(category_id, &related_tags),
+            limit,
+            sort,
+            &format!("tags related to {} in category {id}", related_tags.join(", ")),
+            json,
+        )
+        .await;
+    }
 
     if series {
         let mut request = client.category_series(category_id);
@@ -533,14 +704,17 @@ async fn category(
 }
 
 /// Parsed arguments for the `release` command. A struct rather than positional
-/// parameters because `release` now carries three mutually-exclusive view flags
-/// (`--series`/`--sources`/`--dates`) plus their modifiers.
+/// parameters because `release` now carries several mutually-exclusive view
+/// flags (`--series`/`--sources`/`--dates`/`--tags`/`--related-tags`) plus their
+/// modifiers.
 struct ReleaseArgs {
     id: Option<u32>,
     series: bool,
     sources: bool,
     dates: bool,
     include_no_data: bool,
+    tags: bool,
+    related_tags: Vec<String>,
     limit: Option<u32>,
     order_by: Option<OrderByArg>,
     sort: Option<SortOrderArg>,
@@ -553,6 +727,8 @@ async fn release(client: &Client, args: ReleaseArgs, json: bool) -> Result<()> {
         sources,
         dates,
         include_no_data,
+        tags,
+        related_tags,
         limit,
         order_by,
         sort,
@@ -690,6 +866,27 @@ async fn release(client: &Client, args: ReleaseArgs, json: bool) -> Result<()> {
             println!("{}", date.date);
         }
         return Ok(());
+    }
+
+    if tags {
+        return print_tags_result(
+            client.release_tags(release_id),
+            limit,
+            sort,
+            &format!("tags in release {id}"),
+            json,
+        )
+        .await;
+    }
+    if !related_tags.is_empty() {
+        return print_tags_result(
+            client.release_related_tags(release_id, &related_tags),
+            limit,
+            sort,
+            &format!("tags related to {} in release {id}", related_tags.join(", ")),
+            json,
+        )
+        .await;
     }
 
     let release = client
