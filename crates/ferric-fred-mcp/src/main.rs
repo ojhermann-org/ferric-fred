@@ -25,7 +25,7 @@
 mod params;
 
 use anyhow::Context;
-use chrono::NaiveDate;
+use chrono::{NaiveDate, NaiveDateTime};
 use ferric_fred::{
     CategoryId, Client, ReleaseElementId, ReleaseId, SeriesId, SourceId, TagsRequest,
 };
@@ -85,6 +85,12 @@ struct GetObservationsParams {
 struct GetSeriesUpdatesParams {
     /// Narrow to a class of series: `all` (default), `macro`, or `regional`.
     filter: Option<UpdatesFilterArg>,
+    /// Start of the update time window, `YYYY-MM-DDTHH:MM` in FRED's timezone (to
+    /// the minute). Must be given together with `end_time`.
+    start_time: Option<String>,
+    /// End of the update time window, same format. Must be given together with
+    /// `start_time`.
+    end_time: Option<String>,
     /// Maximum number of series to return.
     limit: Option<u32>,
 }
@@ -471,7 +477,8 @@ impl FredServer {
         name = "get_series_updates",
         description = "List the FRED series updated most recently (a \"what changed\" feed, \
                        ordered by last-updated time), with pagination metadata. Optionally narrow \
-                       to macro or regional series."
+                       to macro or regional series, or to a start_time/end_time update window \
+                       (both required together, YYYY-MM-DDTHH:MM in FRED's timezone)."
     )]
     async fn get_series_updates(
         &self,
@@ -480,6 +487,23 @@ impl FredServer {
         let mut request = self.client.series_updates();
         if let Some(filter) = params.filter {
             request = request.filter(filter.into());
+        }
+        // FRED requires start_time and end_time as a pair; enforce that here since
+        // the two arrive as separate optional params.
+        match (params.start_time, params.end_time) {
+            (Some(start), Some(end)) => {
+                request = request.time_window(
+                    parse_datetime(&start, "start_time")?,
+                    parse_datetime(&end, "end_time")?,
+                );
+            }
+            (None, None) => {}
+            _ => {
+                return Err(ErrorData::invalid_params(
+                    "start_time and end_time must be provided together".to_string(),
+                    None,
+                ));
+            }
         }
         if let Some(limit) = params.limit {
             request = request.limit(limit);
@@ -1289,6 +1313,26 @@ fn parse_date(raw: &str, field: &str) -> Result<NaiveDate, ErrorData> {
     })
 }
 
+/// Parse a `start_time`/`end_time` value into a `NaiveDateTime`, accepting
+/// `YYYY-MM-DDTHH:MM[:SS]` or the space variant (ADR-0019).
+fn parse_datetime(raw: &str, field: &str) -> Result<NaiveDateTime, ErrorData> {
+    const FORMATS: [&str; 4] = [
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%dT%H:%M",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+    ];
+    FORMATS
+        .iter()
+        .find_map(|fmt| NaiveDateTime::parse_from_str(raw, fmt).ok())
+        .ok_or_else(|| {
+            ErrorData::invalid_params(
+                format!("invalid `{field}` time `{raw}`, expected YYYY-MM-DDTHH:MM"),
+                None,
+            )
+        })
+}
+
 // Route tool calls through the cached router built once in `new()`, rather than
 // the macro default of reconstructing `Self::tool_router()` on every call.
 #[tool_handler(router = self.tool_router)]
@@ -1514,14 +1558,44 @@ mod tests {
 
     #[test]
     fn series_updates_params_deserialize_enums() {
-        let params: GetSeriesUpdatesParams =
-            serde_json::from_value(serde_json::json!({"filter": "macro", "limit": 5})).unwrap();
+        let params: GetSeriesUpdatesParams = serde_json::from_value(serde_json::json!({
+            "filter": "macro",
+            "limit": 5,
+            "start_time": "2024-03-01T14:30",
+            "end_time": "2024-03-08T00:00"
+        }))
+        .unwrap();
         assert!(matches!(params.filter, Some(UpdatesFilterArg::Macro)));
         assert_eq!(params.limit, Some(5));
+        assert_eq!(params.start_time.as_deref(), Some("2024-03-01T14:30"));
+        assert_eq!(params.end_time.as_deref(), Some("2024-03-08T00:00"));
 
         let empty: GetSeriesUpdatesParams = serde_json::from_value(serde_json::json!({})).unwrap();
         assert!(empty.filter.is_none());
         assert!(empty.limit.is_none());
+        assert!(empty.start_time.is_none() && empty.end_time.is_none());
+    }
+
+    #[test]
+    fn parse_datetime_accepts_variants_and_rejects_garbage() {
+        let expected = NaiveDate::from_ymd_opt(2024, 3, 1)
+            .unwrap()
+            .and_hms_opt(14, 30, 0)
+            .unwrap();
+        assert_eq!(
+            parse_datetime("2024-03-01T14:30", "start_time").unwrap(),
+            expected
+        );
+        assert_eq!(
+            parse_datetime("2024-03-01 14:30", "start_time").unwrap(),
+            expected
+        );
+        assert_eq!(
+            parse_datetime("2024-03-01T14:30:00", "start_time").unwrap(),
+            expected
+        );
+        assert!(parse_datetime("2024-03-01", "start_time").is_err()); // date only
+        assert!(parse_datetime("nope", "start_time").is_err());
     }
 
     #[test]

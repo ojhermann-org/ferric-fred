@@ -104,7 +104,7 @@ environment and provides thirty-one tools:
 | `search_series` | Find series by text (with ordering, sort, limit) |
 | `get_series` | Metadata for a series id |
 | `get_observations` | A series' observations (date range, units transform, frequency aggregation, sort, limit) |
-| `get_series_updates` | Series updated most recently (with class filter, limit) |
+| `get_series_updates` | Series updated most recently (with class filter, a start/end time window, limit) |
 | `get_series_vintagedates` | The dates a series was revised (with sort, limit) |
 | `get_series_categories` | The categories a series belongs to |
 | `get_series_release` | The release a series belongs to |
