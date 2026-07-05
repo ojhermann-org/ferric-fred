@@ -44,6 +44,11 @@ can't run in CI (no Infisical machine identity —
   publish). Running the `#[ignore]` live tests in CI additionally needs an
   Infisical **machine-identity** token to inject `FRED_API_KEY` (ADR-0009) —
   still deferred; release does not depend on it.
+  - **Amended by [ADR-0018](0018-release-secret-via-infisical.md):** once the
+    Infisical machine identity landed ([ADR-0016](0016-ci-live-tests-machine-identity.md)),
+    `CARGO_REGISTRY_TOKEN` moved *into* Infisical (`dev:/shared`) and is injected
+    into the release job, rather than kept as a GitHub Actions secret. The rest
+    of this ADR is unchanged.
 
 ## Consequences
 

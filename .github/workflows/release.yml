@@ -1,0 +1,105 @@
+name: Release
+
+# release-plz drives per-crate versioning and publishing from Conventional
+# Commits (ADR-0012). On every push to main it does two things:
+#   * release-pr — open/update a PR that bumps versions and changelogs for the
+#     next release (review gate);
+#   * release    — publish to crates.io any crate whose version isn't yet on the
+#     registry, and tag it.
+#
+# The crates.io token is NOT a GitHub secret: it lives in Infisical at
+# dev:/shared/CARGO_REGISTRY_TOKEN and is injected into release-plz via the
+# ferric-fred-ci machine identity, exactly like live.yml injects FRED_API_KEY
+# (ADR-0018). GitHub Actions holds only the two Infisical bootstrap secrets.
+#
+# Gated like live.yml: if the Infisical machine identity isn't configured, the
+# release job is skipped and the workflow is a green no-op — so a fork or an
+# un-provisioned clone never fails here.
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write # push tags / create GitHub releases
+  pull-requests: write # open/update the release PR
+
+jobs:
+  gate:
+    name: Check for Infisical machine identity
+    runs-on: ubuntu-latest
+    outputs:
+      configured: ${{ steps.check.outputs.configured }}
+    steps:
+      # Secrets can't be referenced in a job-level `if:`, so gate here and expose
+      # the result as an output the release job depends on.
+      - id: check
+        env:
+          INFISICAL_CLIENT_ID: ${{ secrets.INFISICAL_CLIENT_ID }}
+        run: |
+          if [ -n "${INFISICAL_CLIENT_ID}" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Infisical machine identity not configured — skipping release. See ADR-0016/0018."
+          fi
+
+  release:
+    name: release-plz (release-pr + publish)
+    needs: gate
+    if: needs.gate.outputs.configured == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      # Full history + tags: release-plz compares against the last release tag to
+      # decide each crate's bump and what is unpublished.
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      # Same flake as dev / CI / live (ADR-0008): the Rust toolchain and the
+      # infisical CLI both come from the dev shell, so publish uses the exact
+      # toolchain the gates ran against.
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Expose the flake's Rust toolchain on PATH
+        run: nix develop --command bash -c 'dirname "$(command -v cargo)" >> "$GITHUB_PATH"'
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+
+      # release-plz isn't in the flake; install the prebuilt binary onto the
+      # runner PATH (visible inside `nix develop --command`, which keeps PATH).
+      - name: Install release-plz
+        uses: taiki-e/install-action@v2
+        with:
+          tool: release-plz
+
+      # Authenticate the machine identity, then run release-plz under
+      # `infisical run` so CARGO_REGISTRY_TOKEN (from dev:/shared) reaches
+      # `cargo publish` as an env var — never a GitHub secret or a file.
+      # GITHUB_TOKEN is passed through the step env for release-plz's git/PR ops.
+      - name: Release
+        env:
+          INFISICAL_CLIENT_ID: ${{ secrets.INFISICAL_CLIENT_ID }}
+          INFISICAL_CLIENT_SECRET: ${{ secrets.INFISICAL_CLIENT_SECRET }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          INFISICAL_PROJECT_ID="$(jq -r .workspaceId .infisical.json)"
+          export INFISICAL_PROJECT_ID
+          nix develop --command bash -c '
+            set -euo pipefail
+            token="$(infisical login --method=universal-auth \
+              --client-id="$INFISICAL_CLIENT_ID" \
+              --client-secret="$INFISICAL_CLIENT_SECRET" \
+              --plain --silent)"
+            echo "::add-mask::$token"
+            infisical run --token="$token" \
+              --projectId="$INFISICAL_PROJECT_ID" \
+              --env=dev --path=/shared -- \
+              bash -c "release-plz release-pr && release-plz release"
+          '
