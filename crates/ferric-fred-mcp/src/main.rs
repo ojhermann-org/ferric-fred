@@ -8,7 +8,8 @@
 //! `get_series_vintagedates`, `get_series_categories`, `get_series_release`, the
 //! category tools
 //! (`get_category`, `get_category_children`, `get_category_series`), the release
-//! tools (`get_releases`, `get_release`, `get_release_series`), the source tools
+//! tools (`get_releases`, `get_release`, `get_release_series`,
+//! `get_release_sources`), the source tools
 //! (`get_sources`, `get_source`, `get_source_releases`), and the tag tools
 //! (`get_tags`, `get_related_tags`, `get_tags_series`, `get_series_tags`) — one
 //! per library endpoint, with typed inputs (see [`params`]).
@@ -572,6 +573,34 @@ impl FredServer {
     }
 
     #[tool(
+        name = "get_release_sources",
+        description = "List the FRED data sources a release draws from (the reverse of \
+                       get_source_releases). Returns the full unpaginated list wrapped as \
+                       {count, sources}."
+    )]
+    async fn get_release_sources(
+        &self,
+        Parameters(params): Parameters<GetReleaseParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match self
+            .client
+            .release_sources(ReleaseId::new(params.release_id))
+            .await
+        {
+            Ok(sources) => {
+                let value = serde_json::json!({
+                    "count": sources.len(),
+                    "sources": sources,
+                });
+                Ok(CallToolResult::structured(value))
+            }
+            Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(
+                error.to_string(),
+            )])),
+        }
+    }
+
+    #[tool(
         name = "get_sources",
         description = "List FRED data sources (the organizations that produce releases, e.g. the \
                        Bureau of Economic Analysis), with pagination metadata. Supports sort \
@@ -858,8 +887,9 @@ impl ServerHandler for FredServer {
              revision dates), get_series_categories and get_series_release (a series' categories / \
              release), the category tools — get_category, get_category_children (walk the category tree from \
              the root, id 0), and get_category_series (the series in a category) — the release \
-             tools — get_releases (list publications), get_release, and get_release_series (the \
-             series in a release) — the source tools — get_sources (list data providers), \
+             tools — get_releases (list publications), get_release, get_release_series (the \
+             series in a release), and get_release_sources (the sources a release draws from) — \
+             the source tools — get_sources (list data providers), \
              get_source, and get_source_releases (the releases from a source) — and the tag \
              tools — get_tags (browse/search keywords), get_related_tags (tags co-occurring with \
              a seed set), get_tags_series (series carrying a set of tags), and get_series_tags (a \
