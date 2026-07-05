@@ -672,9 +672,7 @@ impl FredServer {
         &self,
         Parameters(params): Parameters<GetReleaseDatesParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        let mut request = self
-            .client
-            .release_dates(ReleaseId::new(params.release_id));
+        let mut request = self.client.release_dates(ReleaseId::new(params.release_id));
         if let Some(limit) = params.limit {
             request = request.limit(limit);
         }
