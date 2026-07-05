@@ -2,10 +2,11 @@ use serde::de::DeserializeOwned;
 use serde::Deserialize;
 
 use crate::{
-    Category, CategoryId, Error, Observation, ObservationsRequest, Release, ReleaseId,
-    ReleasesRequest, ReleasesResults, Result, Series, SeriesId, SeriesListRequest,
-    SeriesSearchRequest, SeriesSearchResults, SeriesUpdatesRequest, Source, SourceId,
-    SourcesRequest, SourcesResults, TagsRequest, TagsResults, VintageDates, VintageDatesRequest,
+    Category, CategoryId, Error, Observation, ObservationsRequest, Release, ReleaseDatesRequest,
+    ReleaseDatesResults, ReleaseId, ReleasesRequest, ReleasesResults, Result, Series, SeriesId,
+    SeriesListRequest, SeriesSearchRequest, SeriesSearchResults, SeriesUpdatesRequest, Source,
+    SourceId, SourcesRequest, SourcesResults, TagsRequest, TagsResults, VintageDates,
+    VintageDatesRequest,
 };
 
 /// Base URL for the FRED REST API.
@@ -245,6 +246,34 @@ impl Client {
         self.get(request.path(), &request.query_params()).await
     }
 
+    /// Begin a request for the publication dates of *all* releases (the
+    /// `fred/releases/dates` endpoint) — a release calendar across FRED,
+    /// newest first by default.
+    ///
+    /// Returns a builder; set optional sort/paging (and
+    /// [`include_dates_with_no_data`](ReleaseDatesRequest::include_dates_with_no_data))
+    /// and call [`ReleaseDatesRequest::send`] to run it.
+    ///
+    /// ```no_run
+    /// # async fn run(client: &ferric_fred::Client) -> ferric_fred::Result<()> {
+    /// let calendar = client.releases_dates().limit(20).send().await?;
+    /// println!("{} release dates", calendar.count);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn releases_dates(&self) -> ReleaseDatesRequest<'_> {
+        ReleaseDatesRequest::new(self, "/releases/dates")
+    }
+
+    /// Run a release-dates request — `releases/dates` or `release/dates`
+    /// (invoked by [`ReleaseDatesRequest::send`]).
+    pub(crate) async fn execute_release_dates(
+        &self,
+        request: &ReleaseDatesRequest<'_>,
+    ) -> Result<ReleaseDatesResults> {
+        self.get(request.path(), &request.query_params()).await
+    }
+
     /// Fetch a single release by id (the `fred/release` endpoint).
     ///
     /// # Errors
@@ -309,6 +338,26 @@ impl Client {
             )
             .await?;
         Ok(response.sources)
+    }
+
+    /// Begin a request for the publication dates of *one* release (the
+    /// `fred/release/dates` endpoint) — that release's calendar, oldest first
+    /// by default.
+    ///
+    /// Returns a [`ReleaseDatesRequest`] builder; set optional sort/paging (and
+    /// [`include_dates_with_no_data`](ReleaseDatesRequest::include_dates_with_no_data))
+    /// and call [`send`](ReleaseDatesRequest::send) to run it.
+    ///
+    /// ```no_run
+    /// # async fn run(client: &ferric_fred::Client) -> ferric_fred::Result<()> {
+    /// use ferric_fred::ReleaseId;
+    /// let dates = client.release_dates(ReleaseId::new(82)).limit(10).send().await?;
+    /// println!("{} release dates", dates.count);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn release_dates(&self, release_id: ReleaseId) -> ReleaseDatesRequest<'_> {
+        ReleaseDatesRequest::with_release(self, "/release/dates", release_id.get().to_string())
     }
 
     /// Begin a request to browse or search FRED's tag vocabulary (the
@@ -680,8 +729,8 @@ struct FredErrorBody {
 mod tests {
     use super::Client;
     use crate::{
-        CategoryId, Error, Frequency, OrderBy, ReleaseId, SeasonalAdjustment, SeriesId, SourceId,
-        Units, UpdatesFilter,
+        CategoryId, Error, Frequency, OrderBy, ReleaseId, SeasonalAdjustment, SeriesId, SortOrder,
+        SourceId, Units, UpdatesFilter,
     };
     use wiremock::matchers::{method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -1188,6 +1237,67 @@ mod tests {
         assert_eq!(sources[0].id, SourceId::new(18));
         assert_eq!(sources[0].link.as_deref(), Some("http://www.bea.gov/"));
         assert!(sources[1].link.is_none());
+    }
+
+    #[tokio::test]
+    async fn releases_dates_send_params_and_parse() {
+        let server = MockServer::start().await;
+        // The `/releases/dates` calendar carries a release_name per entry.
+        Mock::given(method("GET"))
+            .and(path("/releases/dates"))
+            .and(query_param("sort_order", "desc"))
+            .and(query_param("limit", "2"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"count":2,"offset":0,"limit":2,"release_dates":[
+                    {"release_id":9,"release_name":"Advance Monthly Sales","date":"2013-08-13"},
+                    {"release_id":10,"release_name":"Consumer Price Index","date":"2013-08-15"}
+                ]}"#,
+            ))
+            .mount(&server)
+            .await;
+
+        let results = client_for(&server)
+            .releases_dates()
+            .sort_order(SortOrder::Descending)
+            .limit(2)
+            .send()
+            .await
+            .expect("releases/dates parse");
+        assert_eq!(results.count, 2);
+        assert_eq!(results.release_dates[0].release_id, ReleaseId::new(9));
+        assert_eq!(
+            results.release_dates[0].release_name.as_deref(),
+            Some("Advance Monthly Sales")
+        );
+    }
+
+    #[tokio::test]
+    async fn release_dates_send_release_id_and_include_flag_and_parse() {
+        let server = MockServer::start().await;
+        // `/release/dates` fixes the release, so entries omit release_name; the
+        // request must carry release_id and the include-no-data toggle.
+        Mock::given(method("GET"))
+            .and(path("/release/dates"))
+            .and(query_param("release_id", "82"))
+            .and(query_param("include_release_dates_with_no_data", "true"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"count":2,"offset":0,"limit":10000,"release_dates":[
+                    {"release_id":82,"date":"1997-02-10"},
+                    {"release_id":82,"date":"1998-02-10"}
+                ]}"#,
+            ))
+            .mount(&server)
+            .await;
+
+        let results = client_for(&server)
+            .release_dates(ReleaseId::new(82))
+            .include_dates_with_no_data(true)
+            .send()
+            .await
+            .expect("release/dates parse");
+        assert_eq!(results.count, 2);
+        assert_eq!(results.release_dates[0].release_id, ReleaseId::new(82));
+        assert!(results.release_dates[0].release_name.is_none());
     }
 
     #[tokio::test]

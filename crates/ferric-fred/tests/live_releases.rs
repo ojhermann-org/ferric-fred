@@ -38,3 +38,35 @@ async fn releases_list_and_single_and_series() {
     assert!(!sources.is_empty());
     assert!(sources.iter().all(|source| !source.name.is_empty()));
 }
+
+#[tokio::test]
+#[ignore = "hits the live FRED API; requires FRED_API_KEY"]
+async fn release_dates_all_and_single() {
+    let client = Client::from_env().expect("FRED_API_KEY set");
+
+    // The cross-FRED release calendar is non-empty and names each release.
+    let calendar = client
+        .releases_dates()
+        .limit(5)
+        .send()
+        .await
+        .expect("releases/dates");
+    assert!(calendar.count > 0);
+    assert!(calendar
+        .release_dates
+        .iter()
+        .all(|d| d.release_name.as_deref().is_some_and(|n| !n.is_empty())));
+
+    // A single release's dates (53 = "Gross Domestic Product") omit the name.
+    let dates = client
+        .release_dates(ReleaseId::new(53))
+        .limit(5)
+        .send()
+        .await
+        .expect("release/dates");
+    assert!(dates.count > 0);
+    assert!(dates
+        .release_dates
+        .iter()
+        .all(|d| d.release_id == ReleaseId::new(53)));
+}
