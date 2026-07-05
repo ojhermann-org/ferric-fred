@@ -8,8 +8,9 @@
 //! `get_series_vintagedates`, `get_series_categories`, `get_series_release`, the
 //! category tools
 //! (`get_category`, `get_category_children`, `get_category_series`), the release
-//! tools (`get_releases`, `get_release`, `get_release_series`,
-//! `get_release_sources`), the source tools
+//! tools (`get_releases`, `get_releases_dates`, `get_release`,
+//! `get_release_series`, `get_release_sources`, `get_release_dates`), the source
+//! tools
 //! (`get_sources`, `get_source`, `get_source_releases`), and the tag tools
 //! (`get_tags`, `get_related_tags`, `get_tags_series`, `get_series_tags`) — one
 //! per library endpoint, with typed inputs (see [`params`]).
@@ -140,6 +141,32 @@ struct ReleaseSeriesParams {
     order_by: Option<OrderByArg>,
     /// Sort direction.
     sort: Option<SortOrderArg>,
+}
+
+/// Input parameters for the `get_releases_dates` tool.
+#[derive(Debug, Deserialize, JsonSchema)]
+struct GetReleasesDatesParams {
+    /// Maximum number of release dates to return.
+    limit: Option<u32>,
+    /// Sort direction by date (newest first by default).
+    sort: Option<SortOrderArg>,
+    /// Include dates that have no data yet, e.g. scheduled future releases
+    /// (omitted by default).
+    include_dates_with_no_data: Option<bool>,
+}
+
+/// Input parameters for the `get_release_dates` tool.
+#[derive(Debug, Deserialize, JsonSchema)]
+struct GetReleaseDatesParams {
+    /// The FRED release id, e.g. 82 (Employment Situation).
+    release_id: u32,
+    /// Maximum number of release dates to return.
+    limit: Option<u32>,
+    /// Sort direction by date (oldest first by default).
+    sort: Option<SortOrderArg>,
+    /// Include dates that have no data yet, e.g. scheduled future releases
+    /// (omitted by default).
+    include_dates_with_no_data: Option<bool>,
 }
 
 /// Input parameters for the `get_sources` tool.
@@ -601,6 +628,76 @@ impl FredServer {
     }
 
     #[tool(
+        name = "get_releases_dates",
+        description = "List the publication dates of ALL FRED releases — a release calendar across \
+                       FRED — with pagination metadata. Each entry names its release. Newest first \
+                       by default; supports sort direction, a result limit, and including dates \
+                       that have no data yet."
+    )]
+    async fn get_releases_dates(
+        &self,
+        Parameters(params): Parameters<GetReleasesDatesParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let mut request = self.client.releases_dates();
+        if let Some(limit) = params.limit {
+            request = request.limit(limit);
+        }
+        if let Some(sort) = params.sort {
+            request = request.sort_order(sort.into());
+        }
+        if let Some(include) = params.include_dates_with_no_data {
+            request = request.include_dates_with_no_data(include);
+        }
+
+        match request.send().await {
+            Ok(results) => {
+                let value = serde_json::to_value(&results)
+                    .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+                Ok(CallToolResult::structured(value))
+            }
+            Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(
+                error.to_string(),
+            )])),
+        }
+    }
+
+    #[tool(
+        name = "get_release_dates",
+        description = "List the publication dates of ONE FRED release (its calendar), with \
+                       pagination metadata. Oldest first by default; supports sort direction, a \
+                       result limit, and including dates that have no data yet (e.g. scheduled \
+                       future releases)."
+    )]
+    async fn get_release_dates(
+        &self,
+        Parameters(params): Parameters<GetReleaseDatesParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let mut request = self
+            .client
+            .release_dates(ReleaseId::new(params.release_id));
+        if let Some(limit) = params.limit {
+            request = request.limit(limit);
+        }
+        if let Some(sort) = params.sort {
+            request = request.sort_order(sort.into());
+        }
+        if let Some(include) = params.include_dates_with_no_data {
+            request = request.include_dates_with_no_data(include);
+        }
+
+        match request.send().await {
+            Ok(results) => {
+                let value = serde_json::to_value(&results)
+                    .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+                Ok(CallToolResult::structured(value))
+            }
+            Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(
+                error.to_string(),
+            )])),
+        }
+    }
+
+    #[tool(
         name = "get_sources",
         description = "List FRED data sources (the organizations that produce releases, e.g. the \
                        Bureau of Economic Analysis), with pagination metadata. Supports sort \
@@ -887,8 +984,10 @@ impl ServerHandler for FredServer {
              revision dates), get_series_categories and get_series_release (a series' categories / \
              release), the category tools — get_category, get_category_children (walk the category tree from \
              the root, id 0), and get_category_series (the series in a category) — the release \
-             tools — get_releases (list publications), get_release, get_release_series (the \
-             series in a release), and get_release_sources (the sources a release draws from) — \
+             tools — get_releases (list publications), get_releases_dates (the release calendar \
+             across all releases), get_release, get_release_series (the series in a release), \
+             get_release_sources (the sources a release draws from), and get_release_dates (one \
+             release's publication dates) — \
              the source tools — get_sources (list data providers), \
              get_source, and get_source_releases (the releases from a source) — and the tag \
              tools — get_tags (browse/search keywords), get_related_tags (tags co-occurring with \
@@ -1001,6 +1100,34 @@ mod tests {
         assert_eq!(params.release_id, 53);
         assert!(matches!(params.order_by, Some(OrderByArg::Popularity)));
         assert!(params.sort.is_none());
+    }
+
+    #[test]
+    fn releases_dates_params_deserialize_and_default_none() {
+        let params: GetReleasesDatesParams = serde_json::from_value(serde_json::json!({
+            "sort": "desc",
+            "include_dates_with_no_data": true
+        }))
+        .unwrap();
+        assert!(matches!(params.sort, Some(SortOrderArg::Desc)));
+        assert_eq!(params.include_dates_with_no_data, Some(true));
+        assert!(params.limit.is_none());
+
+        let empty: GetReleasesDatesParams = serde_json::from_value(serde_json::json!({})).unwrap();
+        assert!(empty.sort.is_none() && empty.include_dates_with_no_data.is_none());
+    }
+
+    #[test]
+    fn release_dates_params_deserialize_release_id_and_flags() {
+        let params: GetReleaseDatesParams = serde_json::from_value(serde_json::json!({
+            "release_id": 82,
+            "limit": 5
+        }))
+        .unwrap();
+        assert_eq!(params.release_id, 82);
+        assert_eq!(params.limit, Some(5));
+        assert!(params.sort.is_none());
+        assert!(params.include_dates_with_no_data.is_none());
     }
 
     #[test]
