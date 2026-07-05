@@ -29,4 +29,13 @@ async fn category_tree_and_series() {
         .await
         .expect("category 125 series");
     assert!(series.count > 0);
+
+    // Related categories: the endpoint resolves and deserializes (the list may
+    // legitimately be empty for a given category, so we only assert well-formed
+    // entries, not a count).
+    let related = client
+        .category_related(CategoryId::new(125))
+        .await
+        .expect("category 125 related");
+    assert!(related.iter().all(|category| !category.name.is_empty()));
 }

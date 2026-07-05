@@ -255,6 +255,25 @@ impl Client {
         Ok(response.categories)
     }
 
+    /// Fetch the categories related to a category (the `fred/category/related`
+    /// endpoint) — cross-links to sibling topics elsewhere in the tree, distinct
+    /// from the parent/child hierarchy. FRED returns the full list unpaginated,
+    /// so this yields a plain `Vec<Category>` (often empty).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails to send, FRED returns a non-success
+    /// status, or the response body cannot be deserialized.
+    pub async fn category_related(&self, category_id: CategoryId) -> Result<Vec<Category>> {
+        let response: CategoriesResponse = self
+            .get(
+                "/category/related",
+                &[("category_id", category_id.get().to_string())],
+            )
+            .await?;
+        Ok(response.categories)
+    }
+
     /// Begin a request for the series in a category (the `fred/category/series`
     /// endpoint).
     ///
@@ -1128,6 +1147,30 @@ mod tests {
         assert_eq!(children.len(), 2);
         assert_eq!(children[0].name, "Exports");
         assert_eq!(children[1].id, CategoryId::new(17));
+    }
+
+    #[tokio::test]
+    async fn category_related_parse() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/category/related"))
+            .and(query_param("category_id", "32073"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"categories":[
+                    {"id":149,"name":"Arkansas","parent_id":27281},
+                    {"id":150,"name":"Illinois","parent_id":27281}
+                ]}"#,
+            ))
+            .mount(&server)
+            .await;
+
+        let related = client_for(&server)
+            .category_related(CategoryId::new(32073))
+            .await
+            .expect("category/related parse");
+        assert_eq!(related.len(), 2);
+        assert_eq!(related[0].name, "Arkansas");
+        assert_eq!(related[1].id, CategoryId::new(150));
     }
 
     #[tokio::test]
