@@ -5,7 +5,8 @@
 //! from `FRED_API_KEY` via `Client::from_env` (ADR-0009).
 //!
 //! Tools: `search_series`, `get_series`, `get_observations`, `get_series_updates`,
-//! `get_series_categories`, `get_series_release`, the category tools
+//! `get_series_vintagedates`, `get_series_categories`, `get_series_release`, the
+//! category tools
 //! (`get_category`, `get_category_children`, `get_category_series`), the release
 //! tools (`get_releases`, `get_release`, `get_release_series`), the source tools
 //! (`get_sources`, `get_source`, `get_source_releases`), and the tag tools
@@ -77,6 +78,17 @@ struct GetSeriesUpdatesParams {
     /// Narrow to a class of series: `all` (default), `macro`, or `regional`.
     filter: Option<UpdatesFilterArg>,
     /// Maximum number of series to return.
+    limit: Option<u32>,
+}
+
+/// Input parameters for the `get_series_vintagedates` tool.
+#[derive(Debug, Deserialize, JsonSchema)]
+struct GetSeriesVintagedatesParams {
+    /// The FRED series id, e.g. `GNPCA` or `UNRATE`.
+    series_id: String,
+    /// Sort direction (oldest first by default).
+    sort: Option<SortOrderArg>,
+    /// Maximum number of dates to return.
     limit: Option<u32>,
 }
 
@@ -344,6 +356,38 @@ impl FredServer {
         match request.send().await {
             Ok(results) => {
                 let value = serde_json::to_value(&results)
+                    .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+                Ok(CallToolResult::structured(value))
+            }
+            Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(
+                error.to_string(),
+            )])),
+        }
+    }
+
+    #[tool(
+        name = "get_series_vintagedates",
+        description = "List a FRED series' vintage dates — the dates on which it was revised or \
+                       newly released, i.e. how the series looked at each point in time. Supports \
+                       sort direction and a result limit."
+    )]
+    async fn get_series_vintagedates(
+        &self,
+        Parameters(params): Parameters<GetSeriesVintagedatesParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let mut request = self
+            .client
+            .series_vintagedates(&SeriesId::new(params.series_id));
+        if let Some(sort) = params.sort {
+            request = request.sort_order(sort.into());
+        }
+        if let Some(limit) = params.limit {
+            request = request.limit(limit);
+        }
+
+        match request.send().await {
+            Ok(dates) => {
+                let value = serde_json::to_value(&dates)
                     .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
                 Ok(CallToolResult::structured(value))
             }
@@ -810,8 +854,9 @@ impl ServerHandler for FredServer {
             "Query FRED (Federal Reserve Economic Data). Tools: search_series (find series by \
              text), get_series (metadata for a series id), get_observations (a series' date/value \
              observations, with optional date range, units transform, and frequency aggregation), \
-             get_series_updates (recently updated series), get_series_categories and \
-             get_series_release (a series' categories / release), the category tools — get_category, get_category_children (walk the category tree from \
+             get_series_updates (recently updated series), get_series_vintagedates (a series' \
+             revision dates), get_series_categories and get_series_release (a series' categories / \
+             release), the category tools — get_category, get_category_children (walk the category tree from \
              the root, id 0), and get_category_series (the series in a category) — the release \
              tools — get_releases (list publications), get_release, and get_release_series (the \
              series in a release) — the source tools — get_sources (list data providers), \
@@ -954,6 +999,16 @@ mod tests {
         let params: GetSeriesTagsParams =
             serde_json::from_value(serde_json::json!({"series_id": "GNPCA"})).unwrap();
         assert_eq!(params.series_id, "GNPCA");
+    }
+
+    #[test]
+    fn series_vintagedates_params_deserialize() {
+        let params: GetSeriesVintagedatesParams =
+            serde_json::from_value(serde_json::json!({"series_id": "GNPCA", "sort": "desc"}))
+                .unwrap();
+        assert_eq!(params.series_id, "GNPCA");
+        assert!(matches!(params.sort, Some(SortOrderArg::Desc)));
+        assert!(params.limit.is_none());
     }
 
     #[test]
