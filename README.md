@@ -24,9 +24,9 @@ are managed on top of that (see the ADRs).
 ## Status
 
 Early construction. The library covers the `series` endpoints (`series`,
-`series/observations`, `series/search`, `series/updates`, `series/categories`,
-`series/release`, `series/tags`), `category` (`category`, `category/children`,
-`category/series`),
+`series/observations`, `series/search`, `series/updates`, `series/vintagedates`,
+`series/categories`, `series/release`, `series/tags`), `category` (`category`,
+`category/children`, `category/series`),
 `release` (`releases`, `release`, `release/series`), `source` (`sources`,
 `source`, `source/releases`), and `tag` (`tags`, `related_tags`, `tags/series`);
 the `fred` CLI (this repo's first consumer) can search, show series metadata,
@@ -61,6 +61,7 @@ fred tags gdp --related --limit 5                               # tags that co-o
 fred series GNPCA --tags                                         # a series' own tags
 fred series GNPCA --categories                                   # the categories a series is in
 fred series GNPCA --release                                      # the release a series belongs to
+fred series GNPCA --vintages                                      # the dates a series was revised
 fred series GNPCA --json | jq .frequency                        # JSON output for scripting
 ```
 

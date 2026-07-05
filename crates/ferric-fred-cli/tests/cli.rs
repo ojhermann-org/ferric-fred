@@ -333,4 +333,10 @@ fn series_categories_and_release_views() {
         .assert()
         .success()
         .stdout(predicate::str::contains("release for GNPCA"));
+
+    fred()
+        .args(["series", "GNPCA", "--vintages"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("vintage dates for GNPCA"));
 }

@@ -58,6 +58,9 @@ enum Command {
         /// Show the release the series belongs to.
         #[arg(long, group = "view")]
         release: bool,
+        /// Show the dates the series was revised (its vintage dates).
+        #[arg(long, group = "view")]
+        vintages: bool,
     },
     /// Print a series' observations (date and value).
     Observations {
@@ -221,7 +224,8 @@ async fn main() -> Result<()> {
             tags,
             categories,
             release,
-        } => series(&client, &id, tags, categories, release, json).await,
+            vintages,
+        } => series(&client, &id, tags, categories, release, vintages, json).await,
         Command::Observations { id, options } => observations(&client, &id, &options, json).await,
         Command::Chart { id, options } => chart_command(&client, &id, &options).await,
         Command::Category {
@@ -298,6 +302,7 @@ async fn series(
     tags: bool,
     categories: bool,
     release: bool,
+    vintages: bool,
     json: bool,
 ) -> Result<()> {
     let series_id = SeriesId::new(id);
@@ -352,6 +357,24 @@ async fn series(
         println!("release for {id}: {} ({})", release.name, release.id);
         if let Some(link) = &release.link {
             println!("  link: {link}");
+        }
+        return Ok(());
+    }
+
+    if vintages {
+        let dates = client
+            .series_vintagedates(&series_id)
+            .send()
+            .await
+            .with_context(|| format!("fetching vintage dates for series `{id}` failed"))?;
+
+        if json {
+            return print_json(&dates);
+        }
+
+        println!("{} vintage dates for {id}:", dates.count);
+        for date in &dates.vintage_dates {
+            println!("{date}");
         }
         return Ok(());
     }
