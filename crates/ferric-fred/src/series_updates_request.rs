@@ -1,4 +1,5 @@
 use crate::{Client, Result, SeriesSearchResults, UpdatesFilter};
+use chrono::NaiveDateTime;
 
 /// A builder for a `series/updates` request, returned by
 /// [`Client::series_updates`]. Lists the series updated most recently (ordered
@@ -23,6 +24,9 @@ use crate::{Client, Result, SeriesSearchResults, UpdatesFilter};
 pub struct SeriesUpdatesRequest<'a> {
     client: &'a Client,
     filter: Option<UpdatesFilter>,
+    /// FRED's `start_time`/`end_time` window — a required pair (ADR-0019), so we
+    /// hold them together to make "one set, the other missing" unrepresentable.
+    time_window: Option<(NaiveDateTime, NaiveDateTime)>,
     limit: Option<u32>,
     offset: Option<u32>,
 }
@@ -32,6 +36,7 @@ impl<'a> SeriesUpdatesRequest<'a> {
         Self {
             client,
             filter: None,
+            time_window: None,
             limit: None,
             offset: None,
         }
@@ -40,6 +45,18 @@ impl<'a> SeriesUpdatesRequest<'a> {
     /// Narrow the results to a class of series (`filter_value`); defaults to all.
     pub fn filter(mut self, filter: UpdatesFilter) -> Self {
         self.filter = Some(filter);
+        self
+    }
+
+    /// Limit results to series updated within a time window (`start_time` /
+    /// `end_time`), down to the minute. FRED requires these as a pair, so this
+    /// method takes both bounds at once (ADR-0019).
+    ///
+    /// The times are naive wall-clock in FRED's own timezone — they are sent as
+    /// given (formatted `%Y%m%d%H%M`), with no timezone conversion and
+    /// minute granularity.
+    pub fn time_window(mut self, start: NaiveDateTime, end: NaiveDateTime) -> Self {
+        self.time_window = Some((start, end));
         self
     }
 
@@ -72,6 +89,10 @@ impl<'a> SeriesUpdatesRequest<'a> {
         let mut params: Vec<(&'static str, String)> = Vec::new();
         if let Some(filter) = self.filter {
             params.push(("filter_value", filter.query_code().to_owned()));
+        }
+        if let Some((start, end)) = self.time_window {
+            params.push(("start_time", start.format("%Y%m%d%H%M").to_string()));
+            params.push(("end_time", end.format("%Y%m%d%H%M").to_string()));
         }
         if let Some(limit) = self.limit {
             params.push(("limit", limit.to_string()));

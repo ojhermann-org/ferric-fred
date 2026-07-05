@@ -69,6 +69,34 @@ async fn series_updates_returns_recently_updated() {
 
 #[tokio::test]
 #[ignore = "hits the live FRED API; requires FRED_API_KEY"]
+async fn series_updates_time_window_is_accepted() {
+    use chrono::{TimeDelta, Utc};
+
+    let client = Client::from_env().expect("FRED_API_KEY should be set for the live test");
+
+    // A recent 7-day window (FRED's updates feed covers roughly the last two
+    // weeks). Naive wall-clock times; a few hours of timezone offset is
+    // immaterial over a multi-day span. Proves FRED accepts our `%Y%m%d%H%M`
+    // encoding — a bad format would be rejected rather than returning results.
+    let end = Utc::now().naive_utc();
+    let start = end - TimeDelta::days(7);
+
+    let results = client
+        .series_updates()
+        .time_window(start, end)
+        .limit(5)
+        .send()
+        .await
+        .expect("series/updates with a time window");
+
+    assert!(
+        results.count > 0,
+        "expected FRED to report some series updated in the last 7 days"
+    );
+}
+
+#[tokio::test]
+#[ignore = "hits the live FRED API; requires FRED_API_KEY"]
 async fn series_vintagedates_resolve() {
     let client = Client::from_env().expect("FRED_API_KEY should be set for the live test");
 

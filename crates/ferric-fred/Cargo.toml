@@ -21,6 +21,9 @@ chrono = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }
 # Local mock HTTP server for offline endpoint tests (ADR-0011).
 wiremock = { workspace = true }
+# `clock` (which the library proper omits — it takes naive times) gives
+# `Utc::now()` for the live series/updates time-window test (ADR-0019).
+chrono = { workspace = true, features = ["clock"] }
 
 [lints]
 workspace = true
