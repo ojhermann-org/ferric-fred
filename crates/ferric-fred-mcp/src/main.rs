@@ -4,8 +4,8 @@
 //! library's endpoints and return the domain types as JSON. The API key comes
 //! from `FRED_API_KEY` via `Client::from_env` (ADR-0009).
 //!
-//! Tools: `search_series`, `get_series`, `get_observations`, `get_series_categories`,
-//! `get_series_release`, the category tools
+//! Tools: `search_series`, `get_series`, `get_observations`, `get_series_updates`,
+//! `get_series_categories`, `get_series_release`, the category tools
 //! (`get_category`, `get_category_children`, `get_category_series`), the release
 //! tools (`get_releases`, `get_release`, `get_release_series`), the source tools
 //! (`get_sources`, `get_source`, `get_source_releases`), and the tag tools
@@ -28,7 +28,7 @@ use rmcp::{tool, tool_handler, tool_router, ErrorData, ServerHandler, ServiceExt
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use params::{AggregationArg, FrequencyArg, OrderByArg, SortOrderArg, UnitsArg};
+use params::{AggregationArg, FrequencyArg, OrderByArg, SortOrderArg, UnitsArg, UpdatesFilterArg};
 
 /// Input parameters for the `get_series` tool.
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -69,6 +69,15 @@ struct GetObservationsParams {
     aggregation: Option<AggregationArg>,
     /// Sort order by date.
     sort: Option<SortOrderArg>,
+}
+
+/// Input parameters for the `get_series_updates` tool.
+#[derive(Debug, Deserialize, JsonSchema)]
+struct GetSeriesUpdatesParams {
+    /// Narrow to a class of series: `all` (default), `macro`, or `regional`.
+    filter: Option<UpdatesFilterArg>,
+    /// Maximum number of series to return.
+    limit: Option<u32>,
 }
 
 /// Input parameters for the `get_category` and `get_category_children` tools.
@@ -306,6 +315,36 @@ impl FredServer {
                     "count": observations.len(),
                     "observations": observations,
                 });
+                Ok(CallToolResult::structured(value))
+            }
+            Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(
+                error.to_string(),
+            )])),
+        }
+    }
+
+    #[tool(
+        name = "get_series_updates",
+        description = "List the FRED series updated most recently (a \"what changed\" feed, \
+                       ordered by last-updated time), with pagination metadata. Optionally narrow \
+                       to macro or regional series."
+    )]
+    async fn get_series_updates(
+        &self,
+        Parameters(params): Parameters<GetSeriesUpdatesParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let mut request = self.client.series_updates();
+        if let Some(filter) = params.filter {
+            request = request.filter(filter.into());
+        }
+        if let Some(limit) = params.limit {
+            request = request.limit(limit);
+        }
+
+        match request.send().await {
+            Ok(results) => {
+                let value = serde_json::to_value(&results)
+                    .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
                 Ok(CallToolResult::structured(value))
             }
             Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(
@@ -771,8 +810,8 @@ impl ServerHandler for FredServer {
             "Query FRED (Federal Reserve Economic Data). Tools: search_series (find series by \
              text), get_series (metadata for a series id), get_observations (a series' date/value \
              observations, with optional date range, units transform, and frequency aggregation), \
-             get_series_categories and get_series_release (a series' categories / release), \
-             the category tools — get_category, get_category_children (walk the category tree from \
+             get_series_updates (recently updated series), get_series_categories and \
+             get_series_release (a series' categories / release), the category tools — get_category, get_category_children (walk the category tree from \
              the root, id 0), and get_category_series (the series in a category) — the release \
              tools — get_releases (list publications), get_release, and get_release_series (the \
              series in a release) — the source tools — get_sources (list data providers), \
@@ -915,6 +954,18 @@ mod tests {
         let params: GetSeriesTagsParams =
             serde_json::from_value(serde_json::json!({"series_id": "GNPCA"})).unwrap();
         assert_eq!(params.series_id, "GNPCA");
+    }
+
+    #[test]
+    fn series_updates_params_deserialize_enums() {
+        let params: GetSeriesUpdatesParams =
+            serde_json::from_value(serde_json::json!({"filter": "macro", "limit": 5})).unwrap();
+        assert!(matches!(params.filter, Some(UpdatesFilterArg::Macro)));
+        assert_eq!(params.limit, Some(5));
+
+        let empty: GetSeriesUpdatesParams = serde_json::from_value(serde_json::json!({})).unwrap();
+        assert!(empty.filter.is_none());
+        assert!(empty.limit.is_none());
     }
 
     #[test]

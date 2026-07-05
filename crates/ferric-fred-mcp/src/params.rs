@@ -5,7 +5,7 @@
 //! the library (ADR-0010). The `rename_all` attributes make the generated tool
 //! schemas advertise FRED's own value codes.
 
-use ferric_fred::{AggregationMethod, Frequency, OrderBy, SortOrder, Units};
+use ferric_fred::{AggregationMethod, Frequency, OrderBy, SortOrder, Units, UpdatesFilter};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -134,6 +134,25 @@ impl From<AggregationArg> for AggregationMethod {
             AggregationArg::Avg => Self::Average,
             AggregationArg::Sum => Self::Sum,
             AggregationArg::Eop => Self::EndOfPeriod,
+        }
+    }
+}
+
+/// Which series `series/updates` returns.
+#[derive(Debug, Clone, Copy, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum UpdatesFilterArg {
+    All,
+    Macro,
+    Regional,
+}
+
+impl From<UpdatesFilterArg> for UpdatesFilter {
+    fn from(value: UpdatesFilterArg) -> Self {
+        match value {
+            UpdatesFilterArg::All => Self::All,
+            UpdatesFilterArg::Macro => Self::Macro,
+            UpdatesFilterArg::Regional => Self::Regional,
         }
     }
 }
