@@ -21,6 +21,7 @@ use them, and [`0000-adr-template.md`](0000-adr-template.md) for the template.
 | [0010](0010-mcp-server-design.md) | MCP server design | Accepted |
 | [0011](0011-testing-strategy.md) | Testing strategy | Accepted |
 | [0012](0012-ci-versioning-and-release.md) | CI versioning & release strategy | Accepted |
+| [0013](0013-endpoint-addition-pattern.md) | Endpoint-addition pattern | Accepted |
 
 ## Backlog (proposed, not yet written)
 
