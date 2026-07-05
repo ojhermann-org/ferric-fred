@@ -151,6 +151,68 @@ impl Client {
         self.get("/series/search", &request.query_params()).await
     }
 
+    /// Begin a request for the tags on the series matching a search (the
+    /// `fred/series/search/tags` endpoint) — the tag facets of a full-text
+    /// search, for narrowing it down.
+    ///
+    /// Returns a [`TagsRequest`] builder; set optional tag-filter text (sent as
+    /// FRED's `tag_search_text`), sort, and paging, then call
+    /// [`send`](TagsRequest::send) to run it.
+    ///
+    /// ```no_run
+    /// # async fn run(client: &ferric_fred::Client) -> ferric_fred::Result<()> {
+    /// let results = client.series_search_tags("unemployment").limit(10).send().await?;
+    /// println!("{} tags", results.count);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn series_search_tags(&self, search_text: impl Into<String>) -> TagsRequest<'_> {
+        TagsRequest::scoped(
+            self,
+            "/series/search/tags",
+            ("series_search_text", search_text.into()),
+            None,
+            "tag_search_text",
+        )
+    }
+
+    /// Begin a request for the tags that co-occur, among the series matching a
+    /// search, with a seed set of tags (the `fred/series/search/related_tags`
+    /// endpoint).
+    ///
+    /// Accepts any iterable of seed tag names (joined with `;` for FRED).
+    /// Returns a [`TagsRequest`] builder; set optional tag-filter text (sent as
+    /// `tag_search_text`), sort, and paging, then call
+    /// [`send`](TagsRequest::send) to run it.
+    ///
+    /// ```no_run
+    /// # async fn run(client: &ferric_fred::Client) -> ferric_fred::Result<()> {
+    /// let results = client
+    ///     .series_search_related_tags("unemployment", ["monthly"])
+    ///     .send()
+    ///     .await?;
+    /// println!("{} related tags", results.count);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn series_search_related_tags<I, S>(
+        &self,
+        search_text: impl Into<String>,
+        tag_names: I,
+    ) -> TagsRequest<'_>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        TagsRequest::scoped(
+            self,
+            "/series/search/related_tags",
+            ("series_search_text", search_text.into()),
+            Some(join_tag_names(tag_names)),
+            "tag_search_text",
+        )
+    }
+
     /// Fetch a single category by id (the `fred/category` endpoint). Use
     /// [`CategoryId::ROOT`] for the top of the tree.
     ///
@@ -217,6 +279,65 @@ impl Client {
             "/category/series",
             "category_id",
             category_id.get().to_string(),
+        )
+    }
+
+    /// Begin a request for the tags used by the series in a category (the
+    /// `fred/category/tags` endpoint) — the tag facets available when browsing
+    /// a category.
+    ///
+    /// Returns a [`TagsRequest`] builder; set optional tag-filter text/sort/
+    /// paging and call [`send`](TagsRequest::send) to run it.
+    ///
+    /// ```no_run
+    /// # async fn run(client: &ferric_fred::Client) -> ferric_fred::Result<()> {
+    /// use ferric_fred::CategoryId;
+    /// let results = client.category_tags(CategoryId::new(125)).limit(10).send().await?;
+    /// println!("{} tags", results.count);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn category_tags(&self, category_id: CategoryId) -> TagsRequest<'_> {
+        TagsRequest::scoped(
+            self,
+            "/category/tags",
+            ("category_id", category_id.get().to_string()),
+            None,
+            "search_text",
+        )
+    }
+
+    /// Begin a request for the tags that co-occur, within a category, with a
+    /// seed set of tags (the `fred/category/related_tags` endpoint) — refine a
+    /// category browse by discovering adjacent tags.
+    ///
+    /// Accepts any iterable of seed tag names (joined with `;` for FRED).
+    /// Returns a [`TagsRequest`] builder; set optional tag-filter text/sort/
+    /// paging and call [`send`](TagsRequest::send) to run it.
+    ///
+    /// ```no_run
+    /// # async fn run(client: &ferric_fred::Client) -> ferric_fred::Result<()> {
+    /// use ferric_fred::CategoryId;
+    /// let results = client.category_related_tags(CategoryId::new(125), ["gdp"]).send().await?;
+    /// println!("{} related tags", results.count);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn category_related_tags<I, S>(
+        &self,
+        category_id: CategoryId,
+        tag_names: I,
+    ) -> TagsRequest<'_>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        TagsRequest::scoped(
+            self,
+            "/category/related_tags",
+            ("category_id", category_id.get().to_string()),
+            Some(join_tag_names(tag_names)),
+            "search_text",
         )
     }
 
@@ -360,6 +481,60 @@ impl Client {
         ReleaseDatesRequest::with_release(self, "/release/dates", release_id.get().to_string())
     }
 
+    /// Begin a request for the tags used by the series in a release (the
+    /// `fred/release/tags` endpoint) — the tag facets available when browsing a
+    /// release.
+    ///
+    /// Returns a [`TagsRequest`] builder; set optional tag-filter text/sort/
+    /// paging and call [`send`](TagsRequest::send) to run it.
+    ///
+    /// ```no_run
+    /// # async fn run(client: &ferric_fred::Client) -> ferric_fred::Result<()> {
+    /// use ferric_fred::ReleaseId;
+    /// let results = client.release_tags(ReleaseId::new(53)).limit(10).send().await?;
+    /// println!("{} tags", results.count);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn release_tags(&self, release_id: ReleaseId) -> TagsRequest<'_> {
+        TagsRequest::scoped(
+            self,
+            "/release/tags",
+            ("release_id", release_id.get().to_string()),
+            None,
+            "search_text",
+        )
+    }
+
+    /// Begin a request for the tags that co-occur, within a release, with a
+    /// seed set of tags (the `fred/release/related_tags` endpoint).
+    ///
+    /// Accepts any iterable of seed tag names (joined with `;` for FRED).
+    /// Returns a [`TagsRequest`] builder; set optional tag-filter text/sort/
+    /// paging and call [`send`](TagsRequest::send) to run it.
+    ///
+    /// ```no_run
+    /// # async fn run(client: &ferric_fred::Client) -> ferric_fred::Result<()> {
+    /// use ferric_fred::ReleaseId;
+    /// let results = client.release_related_tags(ReleaseId::new(53), ["gdp"]).send().await?;
+    /// println!("{} related tags", results.count);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn release_related_tags<I, S>(&self, release_id: ReleaseId, tag_names: I) -> TagsRequest<'_>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        TagsRequest::scoped(
+            self,
+            "/release/related_tags",
+            ("release_id", release_id.get().to_string()),
+            Some(join_tag_names(tag_names)),
+            "search_text",
+        )
+    }
+
     /// Begin a request to browse or search FRED's tag vocabulary (the
     /// `fred/tags` endpoint).
     ///
@@ -397,12 +572,7 @@ impl Client {
         I: IntoIterator<Item = S>,
         S: AsRef<str>,
     {
-        let joined = tag_names
-            .into_iter()
-            .map(|name| name.as_ref().to_owned())
-            .collect::<Vec<_>>()
-            .join(";");
-        TagsRequest::with_tag_names(self, "/related_tags", joined)
+        TagsRequest::with_tag_names(self, "/related_tags", join_tag_names(tag_names))
     }
 
     /// Run a tags request — `tags` or `related_tags` (invoked by
@@ -430,12 +600,7 @@ impl Client {
         I: IntoIterator<Item = S>,
         S: AsRef<str>,
     {
-        let joined = tag_names
-            .into_iter()
-            .map(|name| name.as_ref().to_owned())
-            .collect::<Vec<_>>()
-            .join(";");
-        SeriesListRequest::new(self, "/tags/series", "tag_names", joined)
+        SeriesListRequest::new(self, "/tags/series", "tag_names", join_tag_names(tag_names))
     }
 
     /// Run a series-list request — `category/series`, `release/series`, or
@@ -657,6 +822,20 @@ impl Client {
 
         serde_json::from_slice(&body).map_err(Error::from)
     }
+}
+
+/// Join tag names with `;`, FRED's multi-value separator for the `tag_names`
+/// parameter (shared by every endpoint that takes a seed tag set).
+fn join_tag_names<I, S>(tag_names: I) -> String
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    tag_names
+        .into_iter()
+        .map(|name| name.as_ref().to_owned())
+        .collect::<Vec<_>>()
+        .join(";")
 }
 
 /// Build an [`Error`] from a non-success FRED response, decoding FRED's error
@@ -1092,6 +1271,129 @@ mod tests {
             .expect("related_tags parse");
         assert_eq!(results.count, 1);
         assert_eq!(results.tags[0].name, "nsa");
+    }
+
+    /// A minimal single-tag `tags` response body, reused by the scoped-tag tests.
+    const ONE_TAG_BODY: &str = r#"{"count":1,"offset":0,"limit":1000,"tags":[
+        {"name":"gdp","group_id":"gen","popularity":80,"series_count":42}
+    ]}"#;
+
+    #[tokio::test]
+    async fn category_tags_send_scope_and_parse() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/category/tags"))
+            .and(query_param("category_id", "125"))
+            .and(query_param("search_text", "gdp"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(ONE_TAG_BODY))
+            .mount(&server)
+            .await;
+
+        let results = client_for(&server)
+            .category_tags(CategoryId::new(125))
+            .search_text("gdp")
+            .send()
+            .await
+            .expect("category/tags parse");
+        assert_eq!(results.count, 1);
+        assert_eq!(results.tags[0].name, "gdp");
+    }
+
+    #[tokio::test]
+    async fn category_related_tags_send_scope_and_seed_and_parse() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/category/related_tags"))
+            .and(query_param("category_id", "125"))
+            .and(query_param("tag_names", "gdp;quarterly"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(ONE_TAG_BODY))
+            .mount(&server)
+            .await;
+
+        let results = client_for(&server)
+            .category_related_tags(CategoryId::new(125), ["gdp", "quarterly"])
+            .send()
+            .await
+            .expect("category/related_tags parse");
+        assert_eq!(results.count, 1);
+    }
+
+    #[tokio::test]
+    async fn release_tags_send_scope_and_parse() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/release/tags"))
+            .and(query_param("release_id", "53"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(ONE_TAG_BODY))
+            .mount(&server)
+            .await;
+
+        let results = client_for(&server)
+            .release_tags(ReleaseId::new(53))
+            .send()
+            .await
+            .expect("release/tags parse");
+        assert_eq!(results.count, 1);
+    }
+
+    #[tokio::test]
+    async fn release_related_tags_send_scope_and_seed_and_parse() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/release/related_tags"))
+            .and(query_param("release_id", "53"))
+            .and(query_param("tag_names", "gdp"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(ONE_TAG_BODY))
+            .mount(&server)
+            .await;
+
+        let results = client_for(&server)
+            .release_related_tags(ReleaseId::new(53), ["gdp"])
+            .send()
+            .await
+            .expect("release/related_tags parse");
+        assert_eq!(results.count, 1);
+    }
+
+    #[tokio::test]
+    async fn series_search_tags_send_scope_and_tag_search_text() {
+        let server = MockServer::start().await;
+        // series/search/* sends the tag filter under `tag_search_text`, not
+        // `search_text`; the mock only matches if that key is used.
+        Mock::given(method("GET"))
+            .and(path("/series/search/tags"))
+            .and(query_param("series_search_text", "unemployment"))
+            .and(query_param("tag_search_text", "rate"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(ONE_TAG_BODY))
+            .mount(&server)
+            .await;
+
+        let results = client_for(&server)
+            .series_search_tags("unemployment")
+            .search_text("rate")
+            .send()
+            .await
+            .expect("series/search/tags parse");
+        assert_eq!(results.count, 1);
+    }
+
+    #[tokio::test]
+    async fn series_search_related_tags_send_scope_and_seed() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/series/search/related_tags"))
+            .and(query_param("series_search_text", "unemployment"))
+            .and(query_param("tag_names", "monthly"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(ONE_TAG_BODY))
+            .mount(&server)
+            .await;
+
+        let results = client_for(&server)
+            .series_search_related_tags("unemployment", ["monthly"])
+            .send()
+            .await
+            .expect("series/search/related_tags parse");
+        assert_eq!(results.count, 1);
     }
 
     #[tokio::test]
