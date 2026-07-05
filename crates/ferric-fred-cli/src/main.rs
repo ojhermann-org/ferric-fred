@@ -88,16 +88,20 @@ enum Command {
         #[arg(long)]
         sort: Option<SortOrderArg>,
     },
-    /// List FRED data releases, show one, or list a release's series.
+    /// List FRED data releases, show one, or list a release's series or sources.
     ///
     /// With no id, lists all releases. With an id, shows that release; add
-    /// `--series` to list the series it publishes.
+    /// `--series` to list the series it publishes, or `--sources` to list the
+    /// sources it draws from.
     Release {
         /// Release id. Omit to list all releases.
         id: Option<u32>,
         /// With an id: list the release's series instead of its metadata.
-        #[arg(long, requires = "id")]
+        #[arg(long, requires = "id", conflicts_with = "sources")]
         series: bool,
+        /// With an id: list the release's sources instead of its metadata.
+        #[arg(long, requires = "id")]
+        sources: bool,
         /// Maximum number of results (applies to the list and to `--series`).
         #[arg(long)]
         limit: Option<u32>,
@@ -275,10 +279,11 @@ async fn main() -> Result<()> {
         Command::Release {
             id,
             series,
+            sources,
             limit,
             order_by,
             sort,
-        } => release(&client, id, series, limit, order_by, sort, json).await,
+        } => release(&client, id, series, sources, limit, order_by, sort, json).await,
         Command::Source {
             id,
             releases,
@@ -499,17 +504,21 @@ async fn category(
     Ok(())
 }
 
+// Positional handler args mirror the sibling `category`/`source` handlers; the
+// two view flags (`--series`/`--sources`) are a clap-level concern, resolved here.
+#[allow(clippy::fn_params_excessive_bools, clippy::too_many_arguments)]
 async fn release(
     client: &Client,
     id: Option<u32>,
     series: bool,
+    sources: bool,
     limit: Option<u32>,
     order_by: Option<OrderByArg>,
     sort: Option<SortOrderArg>,
     json: bool,
 ) -> Result<()> {
-    // clap guarantees `--series` is only set alongside an id, so here (no id)
-    // `series` is always false — just list all releases.
+    // clap guarantees `--series`/`--sources` are only set alongside an id, so
+    // here (no id) both are false — just list all releases.
     let Some(id) = id else {
         let mut request = client.releases();
         if let Some(limit) = limit {
@@ -558,6 +567,24 @@ async fn release(
         println!("{} series in release {id}:", results.count);
         for series in &results.series {
             println!("{}\t{}", series.id, series.title);
+        }
+        return Ok(());
+    }
+
+    if sources {
+        // `/release/sources` is unpaginated — no limit/sort to apply.
+        let sources = client
+            .release_sources(release_id)
+            .await
+            .with_context(|| format!("fetching sources for release {id} failed"))?;
+
+        if json {
+            return print_json(&sources);
+        }
+
+        println!("{} sources for release {id}:", sources.len());
+        for source in &sources {
+            println!("{}\t{}", source.id, source.name);
         }
         return Ok(());
     }

@@ -79,6 +79,27 @@ fn release_series_without_id_is_an_error() {
 }
 
 #[test]
+fn release_sources_without_id_is_an_error() {
+    // --sources requires a release id (clap `requires`); caught at parse time.
+    fred()
+        .args(["release", "--sources"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("required arguments"))
+        .stderr(predicate::str::contains("<ID>"));
+}
+
+#[test]
+fn release_series_and_sources_conflict() {
+    // --series and --sources are mutually exclusive (clap `conflicts_with`).
+    fred()
+        .args(["release", "53", "--series", "--sources"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("cannot be used with"));
+}
+
+#[test]
 fn version_is_reported() {
     fred()
         .arg("--version")
@@ -233,6 +254,12 @@ fn release_list_and_single_and_series() {
         .assert()
         .success()
         .stdout(predicate::str::contains("series in release 53"));
+
+    fred()
+        .args(["release", "53", "--sources"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("sources for release 53"));
 }
 
 #[test]
