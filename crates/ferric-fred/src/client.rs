@@ -4,8 +4,8 @@ use serde::Deserialize;
 use crate::{
     Category, CategoryId, Error, Observation, ObservationsRequest, Release, ReleaseId,
     ReleasesRequest, ReleasesResults, Result, Series, SeriesId, SeriesListRequest,
-    SeriesSearchRequest, SeriesSearchResults, Source, SourceId, SourcesRequest, SourcesResults,
-    TagsRequest, TagsResults,
+    SeriesSearchRequest, SeriesSearchResults, SeriesUpdatesRequest, Source, SourceId,
+    SourcesRequest, SourcesResults, TagsRequest, TagsResults,
 };
 
 /// Base URL for the FRED REST API.
@@ -395,6 +395,32 @@ impl Client {
         .await
     }
 
+    /// Begin a request for the most recently updated series (the
+    /// `fred/series/updates` endpoint) — a "what changed" feed, ordered by
+    /// last-updated time.
+    ///
+    /// Returns a builder; set an optional class filter/paging and call
+    /// [`SeriesUpdatesRequest::send`] to run it.
+    ///
+    /// ```no_run
+    /// # async fn run(client: &ferric_fred::Client) -> ferric_fred::Result<()> {
+    /// let results = client.series_updates().limit(20).send().await?;
+    /// println!("{} recently updated", results.count);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn series_updates(&self) -> SeriesUpdatesRequest<'_> {
+        SeriesUpdatesRequest::new(self)
+    }
+
+    /// Run a series/updates request (invoked by [`SeriesUpdatesRequest::send`]).
+    pub(crate) async fn execute_series_updates(
+        &self,
+        request: &SeriesUpdatesRequest<'_>,
+    ) -> Result<SeriesSearchResults> {
+        self.get("/series/updates", &request.query_params()).await
+    }
+
     /// Fetch the categories a series belongs to (the `fred/series/categories`
     /// endpoint) — the reverse of [`category_series`](Client::category_series).
     ///
@@ -603,7 +629,7 @@ mod tests {
     use super::Client;
     use crate::{
         CategoryId, Error, Frequency, OrderBy, ReleaseId, SeasonalAdjustment, SeriesId, SourceId,
-        Units,
+        Units, UpdatesFilter,
     };
     use wiremock::matchers::{method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -1126,5 +1152,29 @@ mod tests {
             .expect("series/release parse");
         assert_eq!(release.id, ReleaseId::new(53));
         assert_eq!(release.name, "Gross Domestic Product");
+    }
+
+    #[tokio::test]
+    async fn series_updates_sends_filter_and_parses() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/series/updates"))
+            .and(query_param("filter_value", "macro"))
+            .and(query_param("limit", "2"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(format!(
+                "{{\"count\":5,\"offset\":0,\"limit\":2,\"seriess\":[{SERIES_OBJECT}]}}"
+            )))
+            .mount(&server)
+            .await;
+
+        let results = client_for(&server)
+            .series_updates()
+            .filter(UpdatesFilter::Macro)
+            .limit(2)
+            .send()
+            .await
+            .expect("series/updates parse");
+        assert_eq!(results.count, 5);
+        assert_eq!(results.series[0].id, SeriesId::new("GNPCA"));
     }
 }

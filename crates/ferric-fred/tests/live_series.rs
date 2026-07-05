@@ -48,3 +48,21 @@ async fn series_reverse_lookups_resolve() {
     let release = client.series_release(&gnpca).await.expect("series/release");
     assert!(!release.name.is_empty());
 }
+
+#[tokio::test]
+#[ignore = "hits the live FRED API; requires FRED_API_KEY"]
+async fn series_updates_returns_recently_updated() {
+    use ferric_fred::UpdatesFilter;
+
+    let client = Client::from_env().expect("FRED_API_KEY should be set for the live test");
+
+    let results = client
+        .series_updates()
+        .filter(UpdatesFilter::Macro)
+        .limit(3)
+        .send()
+        .await
+        .expect("series/updates");
+    assert!(results.count > 0);
+    assert!(!results.series.is_empty());
+}

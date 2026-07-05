@@ -35,12 +35,14 @@ mod seasonal_adjustment;
 mod series;
 mod series_list_request;
 mod series_search_request;
+mod series_updates_request;
 mod sort_order;
 mod source;
 mod sources_request;
 mod tag;
 mod tags_request;
 mod units;
+mod updates_filter;
 
 pub use aggregation_method::AggregationMethod;
 pub use category::Category;
@@ -58,12 +60,14 @@ pub use seasonal_adjustment::SeasonalAdjustment;
 pub use series::{Series, SeriesSearchResults};
 pub use series_list_request::SeriesListRequest;
 pub use series_search_request::SeriesSearchRequest;
+pub use series_updates_request::SeriesUpdatesRequest;
 pub use sort_order::SortOrder;
 pub use source::{Source, SourcesResults};
 pub use sources_request::SourcesRequest;
 pub use tag::{Tag, TagsResults};
 pub use tags_request::TagsRequest;
 pub use units::Units;
+pub use updates_filter::UpdatesFilter;
 
 /// A `Result` whose error type is this crate's [`Error`].
 pub type Result<T> = std::result::Result<T, Error>;
