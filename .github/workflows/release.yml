@@ -82,7 +82,17 @@ jobs:
       # Authenticate the machine identity, then run release-plz under
       # `infisical run` so CARGO_REGISTRY_TOKEN (from dev:/shared) reaches
       # `cargo publish` as an env var — never a GitHub secret or a file.
-      # GITHUB_TOKEN is passed through the step env for release-plz's git/PR ops.
+      #
+      # release-plz's CLI takes the GitHub token as the `--git-token` flag (it
+      # does NOT read GITHUB_TOKEN from the env); the crates.io token, by
+      # contrast, is read from the injected CARGO_REGISTRY_TOKEN env var. So the
+      # two tokens travel by different channels. GITHUB_TOKEN is auto-masked by
+      # Actions in logs; the runner is ephemeral and single-tenant.
+      #
+      # Order is publish-then-PR: `release` publishes any unreleased crate
+      # versions (library first — release-plz orders by the dependency graph),
+      # then `release-pr` refreshes the next-release PR. On this first run that
+      # leaves no redundant PR, since 0.1.0 is published before the PR pass.
       - name: Release
         env:
           INFISICAL_CLIENT_ID: ${{ secrets.INFISICAL_CLIENT_ID }}
@@ -93,13 +103,17 @@ jobs:
           export INFISICAL_PROJECT_ID
           nix develop --command bash -c '
             set -euo pipefail
-            token="$(infisical login --method=universal-auth \
+            login_token="$(infisical login --method=universal-auth \
               --client-id="$INFISICAL_CLIENT_ID" \
               --client-secret="$INFISICAL_CLIENT_SECRET" \
               --plain --silent)"
-            echo "::add-mask::$token"
-            infisical run --token="$token" \
-              --projectId="$INFISICAL_PROJECT_ID" \
-              --env=dev --path=/shared -- \
-              bash -c "release-plz release-pr && release-plz release"
+            echo "::add-mask::$login_token"
+            run_rp() {
+              infisical run --token="$login_token" \
+                --projectId="$INFISICAL_PROJECT_ID" \
+                --env=dev --path=/shared -- \
+                release-plz "$@" --git-token "$GITHUB_TOKEN"
+            }
+            run_rp release
+            run_rp release-pr
           '
