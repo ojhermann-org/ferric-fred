@@ -125,7 +125,8 @@ cargo build --release -p ferric-fred-mcp   # -> target/release/fred-mcp
 ## Development
 
 A Nix flake provides a reproducible toolchain (recent stable Rust via
-`oxalica/rust-overlay`, plus `cargo-nextest`, `cargo-deny`, and `bacon`):
+`oxalica/rust-overlay`, plus `cargo-nextest`, `cargo-deny`, `bacon`, and
+`gitleaks`):
 
 ```sh
 nix develop        # enter the dev shell
@@ -137,11 +138,18 @@ a recent stable Rust (e.g. via `rustup`) and use `cargo` as usual. Either way,
 building is plain `cargo build` / `cargo test`; Nix supplies the environment,
 not the build (see [ADR-0008](docs/adr/0008-nix-flake-dev-environment.md)).
 
-### Pre-push checks
+### Git hooks
 
-A tracked `pre-push` hook runs formatting, clippy, and the offline test suite —
-the same gate as CI — before a push, and blocks on failure. Enable it once per
-clone (`core.hooksPath` is local git config, not carried by git):
+Two tracked hooks live in `.githooks/`:
+
+- **`pre-commit`** — a secret guard ([ADR-0014](docs/adr/0014-pre-commit-secret-guard.md)):
+  it blocks staged secret files (`.envrc`, `.env*`) and scans the staged diff
+  with [`gitleaks`](https://github.com/gitleaks/gitleaks) for pasted keys.
+- **`pre-push`** — runs formatting, clippy, and the offline test suite (the same
+  gate as CI) and blocks on failure.
+
+Enable them once per clone (`core.hooksPath` is local git config, not carried by
+git):
 
 ```sh
 git config core.hooksPath .githooks
