@@ -66,3 +66,18 @@ async fn series_updates_returns_recently_updated() {
     assert!(results.count > 0);
     assert!(!results.series.is_empty());
 }
+
+#[tokio::test]
+#[ignore = "hits the live FRED API; requires FRED_API_KEY"]
+async fn series_vintagedates_resolve() {
+    let client = Client::from_env().expect("FRED_API_KEY should be set for the live test");
+
+    let dates = client
+        .series_vintagedates(&SeriesId::new("GNPCA"))
+        .limit(5)
+        .send()
+        .await
+        .expect("series/vintagedates");
+    assert!(dates.count > 0);
+    assert!(!dates.vintage_dates.is_empty());
+}

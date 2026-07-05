@@ -5,7 +5,7 @@ use crate::{
     Category, CategoryId, Error, Observation, ObservationsRequest, Release, ReleaseId,
     ReleasesRequest, ReleasesResults, Result, Series, SeriesId, SeriesListRequest,
     SeriesSearchRequest, SeriesSearchResults, SeriesUpdatesRequest, Source, SourceId,
-    SourcesRequest, SourcesResults, TagsRequest, TagsResults,
+    SourcesRequest, SourcesResults, TagsRequest, TagsResults, VintageDates, VintageDatesRequest,
 };
 
 /// Base URL for the FRED REST API.
@@ -419,6 +419,39 @@ impl Client {
         request: &SeriesUpdatesRequest<'_>,
     ) -> Result<SeriesSearchResults> {
         self.get("/series/updates", &request.query_params()).await
+    }
+
+    /// Begin a request for a series' vintage dates (the
+    /// `fred/series/vintagedates` endpoint) — the dates on which the series was
+    /// revised or newly released.
+    ///
+    /// Returns a builder; set optional sort/paging and call
+    /// [`VintageDatesRequest::send`] to run it.
+    ///
+    /// ```no_run
+    /// # async fn run(client: &ferric_fred::Client) -> ferric_fred::Result<()> {
+    /// use ferric_fred::SeriesId;
+    /// let dates = client
+    ///     .series_vintagedates(&SeriesId::new("GNPCA"))
+    ///     .limit(10)
+    ///     .send()
+    ///     .await?;
+    /// println!("{} vintage dates", dates.count);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn series_vintagedates(&self, series_id: &SeriesId) -> VintageDatesRequest<'_> {
+        VintageDatesRequest::new(self, series_id.clone())
+    }
+
+    /// Run a series/vintagedates request (invoked by
+    /// [`VintageDatesRequest::send`]).
+    pub(crate) async fn execute_vintage_dates(
+        &self,
+        request: &VintageDatesRequest<'_>,
+    ) -> Result<VintageDates> {
+        self.get("/series/vintagedates", &request.query_params())
+            .await
     }
 
     /// Fetch the categories a series belongs to (the `fred/series/categories`
@@ -1176,5 +1209,32 @@ mod tests {
             .expect("series/updates parse");
         assert_eq!(results.count, 5);
         assert_eq!(results.series[0].id, SeriesId::new("GNPCA"));
+    }
+
+    #[tokio::test]
+    async fn series_vintagedates_send_id_and_parse() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/series/vintagedates"))
+            .and(query_param("series_id", "GNPCA"))
+            .and(query_param("limit", "2"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"count":3,"offset":0,"limit":2,"vintage_dates":["1958-12-21","1959-02-19"]}"#,
+            ))
+            .mount(&server)
+            .await;
+
+        let dates = client_for(&server)
+            .series_vintagedates(&SeriesId::new("GNPCA"))
+            .limit(2)
+            .send()
+            .await
+            .expect("series/vintagedates parse");
+        assert_eq!(dates.count, 3);
+        assert_eq!(dates.vintage_dates.len(), 2);
+        assert_eq!(
+            dates.vintage_dates[0],
+            chrono::NaiveDate::from_ymd_opt(1958, 12, 21).unwrap()
+        );
     }
 }

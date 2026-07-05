@@ -43,6 +43,8 @@ mod tag;
 mod tags_request;
 mod units;
 mod updates_filter;
+mod vintage_dates;
+mod vintage_dates_request;
 
 pub use aggregation_method::AggregationMethod;
 pub use category::Category;
@@ -68,6 +70,8 @@ pub use tag::{Tag, TagsResults};
 pub use tags_request::TagsRequest;
 pub use units::Units;
 pub use updates_filter::UpdatesFilter;
+pub use vintage_dates::VintageDates;
+pub use vintage_dates_request::VintageDatesRequest;
 
 /// A `Result` whose error type is this crate's [`Error`].
 pub type Result<T> = std::result::Result<T, Error>;
