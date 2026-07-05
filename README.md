@@ -23,7 +23,8 @@ are managed on top of that (see the ADRs).
 
 ## Status
 
-Early construction. The library covers the `series` endpoints (`series`,
+`0.1.0` is published to [crates.io](https://crates.io/crates/ferric-fred). The
+library covers the `series` endpoints (`series`,
 `series/observations`, `series/search`, `series/search/tags`,
 `series/search/related_tags`, `series/updates`, `series/vintagedates`,
 `series/categories`, `series/release`, `series/tags`), `category` (`category`,
@@ -86,9 +87,10 @@ it). `fred chart` opens an interactive [ratatui](https://ratatui.rs/) line chart
 of a series' observations (it accepts the same flags as `observations`); press
 `q`, `Esc`, or `Ctrl-C` to quit.
 
-Run it from the workspace with `cargo run -p ferric-fred-cli -- <args>`, and see
-`fred <command> --help` for every flag (`--units`, `--order-by`, … accept the
-FRED value sets).
+Install it with `cargo install ferric-fred-cli` (which provides the `fred`
+binary), or run it from the workspace with `cargo run -p ferric-fred-cli --
+<args>`. See `fred <command> --help` for every flag (`--units`, `--order-by`, …
+accept the FRED value sets).
 
 ## Using the MCP server
 
@@ -130,11 +132,13 @@ environment and provides thirty-one tools:
 | `get_series_search_tags` | Tags of the series matching a search (with tag filter, sort, limit) |
 | `get_series_search_related_tags` | Tags co-occurring with a seed set among a search's series |
 
-Tool results are returned as JSON (MCP structured content). Build the binary,
-then point your MCP client at it:
+Tool results are returned as JSON (MCP structured content). Install it with
+`cargo install ferric-fred-mcp` (which provides the `fred-mcp` binary) — or build
+from the workspace — then point your MCP client at it:
 
 ```sh
-cargo build --release -p ferric-fred-mcp   # -> target/release/fred-mcp
+cargo install ferric-fred-mcp              # -> ~/.cargo/bin/fred-mcp
+cargo build --release -p ferric-fred-mcp   # or from the workspace: target/release/fred-mcp
 ```
 
 ```json
@@ -218,4 +222,12 @@ Design decisions are recorded as ADRs in [`docs/adr/`](docs/adr/). Start with
 
 ## License
 
-TBD (see ADR backlog).
+Dual-licensed under **MIT OR Apache-2.0** (your choice) — the Rust ecosystem
+default ([ADR-0006](docs/adr/0006-license.md)). See [`LICENSE-MIT`](LICENSE-MIT)
+and [`LICENSE-APACHE`](LICENSE-APACHE).
+
+Unless you state otherwise, any contribution you submit is licensed under the
+same dual terms (see [`CONTRIBUTING.md`](CONTRIBUTING.md)).
+
+This covers *our code*; FRED data itself is subject to the St. Louis Fed's terms
+of use, and you supply your own API key — the project ships no data and no key.
