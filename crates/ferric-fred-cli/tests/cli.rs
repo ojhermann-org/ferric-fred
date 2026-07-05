@@ -458,7 +458,9 @@ fn scoped_tag_facet_views() {
         .args(["category", "125", "--related-tags", "trade", "--limit", "3"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("tags related to trade in category 125"));
+        .stdout(predicate::str::contains(
+            "tags related to trade in category 125",
+        ));
 
     fred()
         .args(["release", "53", "--tags", "--limit", "3"])
@@ -470,7 +472,9 @@ fn scoped_tag_facet_views() {
         .args(["release", "53", "--related-tags", "gdp", "--limit", "3"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("tags related to gdp in release 53"));
+        .stdout(predicate::str::contains(
+            "tags related to gdp in release 53",
+        ));
 
     fred()
         .args(["search", "unemployment", "--tags", "--limit", "3"])
@@ -479,8 +483,17 @@ fn scoped_tag_facet_views() {
         .stdout(predicate::str::contains("tags for series matching"));
 
     fred()
-        .args(["search", "unemployment", "--related-tags", "monthly", "--limit", "3"])
+        .args([
+            "search",
+            "unemployment",
+            "--related-tags",
+            "monthly",
+            "--limit",
+            "3",
+        ])
         .assert()
         .success()
-        .stdout(predicate::str::contains("tags related to monthly among series matching"));
+        .stdout(predicate::str::contains(
+            "tags related to monthly among series matching",
+        ));
 }

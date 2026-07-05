@@ -31,7 +31,6 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Search for series matching text.
     /// Search for series matching text, or the tags of the matching series.
     ///
     /// By default lists the matching series. With `--tags`, lists the tags used
@@ -639,7 +638,10 @@ async fn category(client: &Client, args: CategoryArgs, json: bool) -> Result<()>
             client.category_related_tags(category_id, &related_tags),
             limit,
             sort,
-            &format!("tags related to {} in category {id}", related_tags.join(", ")),
+            &format!(
+                "tags related to {} in category {id}",
+                related_tags.join(", ")
+            ),
             json,
         )
         .await;
@@ -883,7 +885,10 @@ async fn release(client: &Client, args: ReleaseArgs, json: bool) -> Result<()> {
             client.release_related_tags(release_id, &related_tags),
             limit,
             sort,
-            &format!("tags related to {} in release {id}", related_tags.join(", ")),
+            &format!(
+                "tags related to {} in release {id}",
+                related_tags.join(", ")
+            ),
             json,
         )
         .await;

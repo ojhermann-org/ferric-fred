@@ -1000,7 +1000,9 @@ impl FredServer {
         &self,
         Parameters(params): Parameters<GetCategoryTagsParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        let mut request = self.client.category_tags(CategoryId::new(params.category_id));
+        let mut request = self
+            .client
+            .category_tags(CategoryId::new(params.category_id));
         if let Some(text) = params.search_text {
             request = request.search_text(text);
         }
