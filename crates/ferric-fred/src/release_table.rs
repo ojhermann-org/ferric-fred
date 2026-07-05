@@ -28,7 +28,14 @@ pub struct ReleaseTable {
     /// The root elements of the tree, ordered by element id. (FRED's redundant
     /// top-level `release_id` — a string, unlike the numeric one on each
     /// element — is dropped; the caller already knows it.)
-    #[serde(rename = "elements", deserialize_with = "roots_from_map")]
+    ///
+    /// On the wire FRED names this `elements` (an object keyed by id); we read
+    /// that but re-serialize as a `roots` array, matching this field and the
+    /// flattened shape.
+    #[serde(
+        rename(serialize = "roots", deserialize = "elements"),
+        deserialize_with = "roots_from_map"
+    )]
     pub roots: Vec<ReleaseTableElement>,
 }
 

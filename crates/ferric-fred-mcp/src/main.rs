@@ -10,8 +10,8 @@
 //! (`get_category`, `get_category_children`, `get_category_related`,
 //! `get_category_series`), the release
 //! tools (`get_releases`, `get_releases_dates`, `get_release`,
-//! `get_release_series`, `get_release_sources`, `get_release_dates`), the source
-//! tools
+//! `get_release_series`, `get_release_sources`, `get_release_dates`,
+//! `get_release_tables`), the source tools
 //! (`get_sources`, `get_source`, `get_source_releases`), the tag tools
 //! (`get_tags`, `get_related_tags`, `get_tags_series`, `get_series_tags`), and
 //! the scoped tag-facet tools (`get_category_tags`, `get_category_related_tags`,
@@ -26,7 +26,9 @@ mod params;
 
 use anyhow::Context;
 use chrono::NaiveDate;
-use ferric_fred::{CategoryId, Client, ReleaseId, SeriesId, SourceId, TagsRequest};
+use ferric_fred::{
+    CategoryId, Client, ReleaseElementId, ReleaseId, SeriesId, SourceId, TagsRequest,
+};
 use rmcp::handler::server::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, ContentBlock, Implementation, ServerCapabilities, ServerInfo};
@@ -171,6 +173,16 @@ struct GetReleaseDatesParams {
     /// Include dates that have no data yet, e.g. scheduled future releases
     /// (omitted by default).
     include_dates_with_no_data: Option<bool>,
+}
+
+/// Input parameters for the `get_release_tables` tool.
+#[derive(Debug, Deserialize, JsonSchema)]
+struct GetReleaseTablesParams {
+    /// The FRED release id, e.g. 10 (Consumer Price Index).
+    release_id: u32,
+    /// Return only the subtree rooted at this element id (omit for the whole
+    /// tree).
+    element_id: Option<u32>,
 }
 
 /// Input parameters for the `get_category_tags` tool.
@@ -817,6 +829,36 @@ impl FredServer {
     }
 
     #[tool(
+        name = "get_release_tables",
+        description = "Fetch a FRED release's table tree — the nested layout (sections, tables, and \
+                       the series rows beneath them) it uses to present its series. Optionally \
+                       scope to the subtree rooted at one element id. Returns the tree as \
+                       structured JSON, with each element's children nested under it."
+    )]
+    async fn get_release_tables(
+        &self,
+        Parameters(params): Parameters<GetReleaseTablesParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let mut request = self
+            .client
+            .release_tables(ReleaseId::new(params.release_id));
+        if let Some(element_id) = params.element_id {
+            request = request.element(ReleaseElementId::new(element_id));
+        }
+
+        match request.send().await {
+            Ok(table) => {
+                let value = serde_json::to_value(&table)
+                    .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+                Ok(CallToolResult::structured(value))
+            }
+            Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(
+                error.to_string(),
+            )])),
+        }
+    }
+
+    #[tool(
         name = "get_sources",
         description = "List FRED data sources (the organizations that produce releases, e.g. the \
                        Bureau of Economic Analysis), with pagination metadata. Supports sort \
@@ -1269,8 +1311,8 @@ impl ServerHandler for FredServer {
              (the series in a category) — the release \
              tools — get_releases (list publications), get_releases_dates (the release calendar \
              across all releases), get_release, get_release_series (the series in a release), \
-             get_release_sources (the sources a release draws from), and get_release_dates (one \
-             release's publication dates) — \
+             get_release_sources (the sources a release draws from), get_release_dates (one \
+             release's publication dates), and get_release_tables (the release's table tree) — \
              the source tools — get_sources (list data providers), \
              get_source, and get_source_releases (the releases from a source) — the tag \
              tools — get_tags (browse/search keywords), get_related_tags (tags co-occurring with \
@@ -1376,6 +1418,20 @@ mod tests {
             serde_json::from_value(serde_json::json!({"sort": "desc"})).unwrap();
         assert!(matches!(list.sort, Some(SortOrderArg::Desc)));
         assert!(list.limit.is_none());
+    }
+
+    #[test]
+    fn release_tables_params_deserialize_with_optional_element() {
+        let scoped: GetReleaseTablesParams =
+            serde_json::from_value(serde_json::json!({"release_id": 10, "element_id": 34483}))
+                .unwrap();
+        assert_eq!(scoped.release_id, 10);
+        assert_eq!(scoped.element_id, Some(34483));
+
+        let whole: GetReleaseTablesParams =
+            serde_json::from_value(serde_json::json!({"release_id": 10})).unwrap();
+        assert_eq!(whole.release_id, 10);
+        assert!(whole.element_id.is_none());
     }
 
     #[test]
