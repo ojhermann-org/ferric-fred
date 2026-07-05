@@ -45,22 +45,13 @@ enum Command {
     },
     /// Show a series: its metadata by default, or a related view with a flag.
     ///
-    /// `--tags`, `--categories`, and `--release` are mutually exclusive.
+    /// `--tags`, `--categories`, `--release`, and `--vintages` are mutually
+    /// exclusive.
     Series {
         /// FRED series id, e.g. GNPCA.
         id: String,
-        /// Show the series' tags instead of its metadata.
-        #[arg(long, group = "view")]
-        tags: bool,
-        /// Show the categories the series belongs to.
-        #[arg(long, group = "view")]
-        categories: bool,
-        /// Show the release the series belongs to.
-        #[arg(long, group = "view")]
-        release: bool,
-        /// Show the dates the series was revised (its vintage dates).
-        #[arg(long, group = "view")]
-        vintages: bool,
+        #[command(flatten)]
+        view: SeriesViewArgs,
     },
     /// Print a series' observations (date and value).
     Observations {
@@ -157,6 +148,58 @@ enum Command {
     },
 }
 
+/// The mutually-exclusive "view" flags for the `series` command. With none set,
+/// the command prints the series' metadata.
+//
+// Four bool fields trips clippy::struct_excessive_bools, but they *are* the CLI
+// surface (--tags / --categories / --release / --vintages); a clap flag group is
+// their idiomatic representation. `selected()` collapses them to a `SeriesView`
+// so the rest of the code never juggles the bools.
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Args)]
+struct SeriesViewArgs {
+    /// Show the series' tags instead of its metadata.
+    #[arg(long, group = "view")]
+    tags: bool,
+    /// Show the categories the series belongs to.
+    #[arg(long, group = "view")]
+    categories: bool,
+    /// Show the release the series belongs to.
+    #[arg(long, group = "view")]
+    release: bool,
+    /// Show the dates the series was revised (its vintage dates).
+    #[arg(long, group = "view")]
+    vintages: bool,
+}
+
+impl SeriesViewArgs {
+    /// Resolve the flags to the single selected view (clap's `group` guarantees
+    /// at most one is set).
+    fn selected(&self) -> SeriesView {
+        if self.tags {
+            SeriesView::Tags
+        } else if self.categories {
+            SeriesView::Categories
+        } else if self.release {
+            SeriesView::Release
+        } else if self.vintages {
+            SeriesView::Vintages
+        } else {
+            SeriesView::Metadata
+        }
+    }
+}
+
+/// Which view of a series to print.
+#[derive(Debug, Clone, Copy)]
+enum SeriesView {
+    Metadata,
+    Tags,
+    Categories,
+    Release,
+    Vintages,
+}
+
 /// Options for the `tags` command.
 #[derive(Args)]
 struct TagsOptions {
@@ -219,13 +262,7 @@ async fn main() -> Result<()> {
             order_by,
             sort,
         } => search(&client, &text, limit, order_by, sort, json).await,
-        Command::Series {
-            id,
-            tags,
-            categories,
-            release,
-            vintages,
-        } => series(&client, &id, tags, categories, release, vintages, json).await,
+        Command::Series { id, view } => series(&client, &id, view.selected(), json).await,
         Command::Observations { id, options } => observations(&client, &id, &options, json).await,
         Command::Chart { id, options } => chart_command(&client, &id, &options).await,
         Command::Category {
@@ -296,107 +333,100 @@ async fn search(
     Ok(())
 }
 
-async fn series(
-    client: &Client,
-    id: &str,
-    tags: bool,
-    categories: bool,
-    release: bool,
-    vintages: bool,
-    json: bool,
-) -> Result<()> {
+async fn series(client: &Client, id: &str, view: SeriesView, json: bool) -> Result<()> {
     let series_id = SeriesId::new(id);
 
-    if tags {
-        let results = client
-            .series_tags(&series_id)
-            .await
-            .with_context(|| format!("fetching tags for series `{id}` failed"))?;
+    match view {
+        SeriesView::Tags => {
+            let results = client
+                .series_tags(&series_id)
+                .await
+                .with_context(|| format!("fetching tags for series `{id}` failed"))?;
 
-        if json {
-            return print_json(&results);
+            if json {
+                return print_json(&results);
+            }
+
+            println!("{} tags for {id}:", results.count);
+            for tag in &results.tags {
+                println!(
+                    "{}\t{}\t{} series",
+                    tag.name, tag.group_id, tag.series_count
+                );
+            }
         }
 
-        println!("{} tags for {id}:", results.count);
-        for tag in &results.tags {
+        SeriesView::Categories => {
+            let categories = client
+                .series_categories(&series_id)
+                .await
+                .with_context(|| format!("fetching categories for series `{id}` failed"))?;
+
+            if json {
+                return print_json(&categories);
+            }
+
+            println!("{} categories for {id}:", categories.len());
+            for category in &categories {
+                println!("{}\t{}", category.id, category.name);
+            }
+        }
+
+        SeriesView::Release => {
+            let release = client
+                .series_release(&series_id)
+                .await
+                .with_context(|| format!("fetching release for series `{id}` failed"))?;
+
+            if json {
+                return print_json(&release);
+            }
+
+            println!("release for {id}: {} ({})", release.name, release.id);
+            if let Some(link) = &release.link {
+                println!("  link: {link}");
+            }
+        }
+
+        SeriesView::Vintages => {
+            let dates = client
+                .series_vintagedates(&series_id)
+                .send()
+                .await
+                .with_context(|| format!("fetching vintage dates for series `{id}` failed"))?;
+
+            if json {
+                return print_json(&dates);
+            }
+
+            println!("{} vintage dates for {id}:", dates.count);
+            for date in &dates.vintage_dates {
+                println!("{date}");
+            }
+        }
+
+        SeriesView::Metadata => {
+            let series = client
+                .series(&series_id)
+                .await
+                .with_context(|| format!("fetching series `{id}` failed"))?;
+
+            if json {
+                return print_json(&series);
+            }
+
+            println!("{}: {}", series.id, series.title);
+            println!("  frequency:  {}", series.frequency);
+            println!("  seasonal:   {}", series.seasonal_adjustment);
+            println!("  units:      {}", series.units);
             println!(
-                "{}\t{}\t{} series",
-                tag.name, tag.group_id, tag.series_count
+                "  range:      {} .. {}",
+                series.observation_start, series.observation_end
             );
+            println!("  updated:    {}", series.last_updated);
         }
-        return Ok(());
     }
 
-    if categories {
-        let categories = client
-            .series_categories(&series_id)
-            .await
-            .with_context(|| format!("fetching categories for series `{id}` failed"))?;
-
-        if json {
-            return print_json(&categories);
-        }
-
-        println!("{} categories for {id}:", categories.len());
-        for category in &categories {
-            println!("{}\t{}", category.id, category.name);
-        }
-        return Ok(());
-    }
-
-    if release {
-        let release = client
-            .series_release(&series_id)
-            .await
-            .with_context(|| format!("fetching release for series `{id}` failed"))?;
-
-        if json {
-            return print_json(&release);
-        }
-
-        println!("release for {id}: {} ({})", release.name, release.id);
-        if let Some(link) = &release.link {
-            println!("  link: {link}");
-        }
-        return Ok(());
-    }
-
-    if vintages {
-        let dates = client
-            .series_vintagedates(&series_id)
-            .send()
-            .await
-            .with_context(|| format!("fetching vintage dates for series `{id}` failed"))?;
-
-        if json {
-            return print_json(&dates);
-        }
-
-        println!("{} vintage dates for {id}:", dates.count);
-        for date in &dates.vintage_dates {
-            println!("{date}");
-        }
-        return Ok(());
-    }
-
-    let series = client
-        .series(&series_id)
-        .await
-        .with_context(|| format!("fetching series `{id}` failed"))?;
-
-    if json {
-        return print_json(&series);
-    }
-
-    println!("{}: {}", series.id, series.title);
-    println!("  frequency:  {}", series.frequency);
-    println!("  seasonal:   {}", series.seasonal_adjustment);
-    println!("  units:      {}", series.units);
-    println!(
-        "  range:      {} .. {}",
-        series.observation_start, series.observation_end
-    );
-    println!("  updated:    {}", series.last_updated);
     Ok(())
 }
 
