@@ -91,7 +91,7 @@ FRED value sets).
 
 `fred-mcp` is an [MCP](https://modelcontextprotocol.io/) server (ADR-0010) that
 exposes FRED to MCP-capable clients over stdio. It reads `FRED_API_KEY` from the
-environment and provides twenty-three tools:
+environment and provides twenty-nine tools:
 
 | Tool | Purpose |
 |------|---------|
@@ -118,6 +118,12 @@ environment and provides twenty-three tools:
 | `get_related_tags` | Tags co-occurring with a seed set (with search text, sort, limit) |
 | `get_tags_series` | Series carrying all of a set of tags (with ordering, sort, limit) |
 | `get_series_tags` | A series' own tags |
+| `get_category_tags` | Tags used by a category's series (with search text, sort, limit) |
+| `get_category_related_tags` | Tags co-occurring with a seed set within a category |
+| `get_release_tags` | Tags used by a release's series (with search text, sort, limit) |
+| `get_release_related_tags` | Tags co-occurring with a seed set within a release |
+| `get_series_search_tags` | Tags of the series matching a search (with tag filter, sort, limit) |
+| `get_series_search_related_tags` | Tags co-occurring with a seed set among a search's series |
 
 Tool results are returned as JSON (MCP structured content). Build the binary,
 then point your MCP client at it:

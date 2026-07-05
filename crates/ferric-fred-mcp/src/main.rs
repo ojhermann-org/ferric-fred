@@ -11,9 +11,12 @@
 //! tools (`get_releases`, `get_releases_dates`, `get_release`,
 //! `get_release_series`, `get_release_sources`, `get_release_dates`), the source
 //! tools
-//! (`get_sources`, `get_source`, `get_source_releases`), and the tag tools
-//! (`get_tags`, `get_related_tags`, `get_tags_series`, `get_series_tags`) — one
-//! per library endpoint, with typed inputs (see [`params`]).
+//! (`get_sources`, `get_source`, `get_source_releases`), the tag tools
+//! (`get_tags`, `get_related_tags`, `get_tags_series`, `get_series_tags`), and
+//! the scoped tag-facet tools (`get_category_tags`, `get_category_related_tags`,
+//! `get_release_tags`, `get_release_related_tags`, `get_series_search_tags`,
+//! `get_series_search_related_tags`) — one per library endpoint, with typed
+//! inputs (see [`params`]).
 //!
 //! Note: over stdio, **stdout is the protocol channel** — nothing may be printed
 //! to it. Any diagnostics must go to stderr.
@@ -22,7 +25,7 @@ mod params;
 
 use anyhow::Context;
 use chrono::NaiveDate;
-use ferric_fred::{CategoryId, Client, ReleaseId, SeriesId, SourceId};
+use ferric_fred::{CategoryId, Client, ReleaseId, SeriesId, SourceId, TagsRequest};
 use rmcp::handler::server::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, ContentBlock, Implementation, ServerCapabilities, ServerInfo};
@@ -167,6 +170,94 @@ struct GetReleaseDatesParams {
     /// Include dates that have no data yet, e.g. scheduled future releases
     /// (omitted by default).
     include_dates_with_no_data: Option<bool>,
+}
+
+/// Input parameters for the `get_category_tags` tool.
+#[derive(Debug, Deserialize, JsonSchema)]
+struct GetCategoryTagsParams {
+    /// The FRED category id (0 is the root of the category tree).
+    category_id: u32,
+    /// Restrict to tags matching this text.
+    search_text: Option<String>,
+    /// Sort direction (tags are ordered by series count by default).
+    sort: Option<SortOrderArg>,
+    /// Maximum number of tags to return.
+    limit: Option<u32>,
+}
+
+/// Input parameters for the `get_category_related_tags` tool.
+#[derive(Debug, Deserialize, JsonSchema)]
+struct GetCategoryRelatedTagsParams {
+    /// The FRED category id (0 is the root of the category tree).
+    category_id: u32,
+    /// Seed tag names; returns the tags co-occurring, within the category, with
+    /// *all* of them.
+    tag_names: Vec<String>,
+    /// Restrict the related tags to those matching this text.
+    search_text: Option<String>,
+    /// Sort direction (tags are ordered by series count by default).
+    sort: Option<SortOrderArg>,
+    /// Maximum number of tags to return.
+    limit: Option<u32>,
+}
+
+/// Input parameters for the `get_release_tags` tool.
+#[derive(Debug, Deserialize, JsonSchema)]
+struct GetReleaseTagsParams {
+    /// The FRED release id, e.g. 53 (Gross Domestic Product).
+    release_id: u32,
+    /// Restrict to tags matching this text.
+    search_text: Option<String>,
+    /// Sort direction (tags are ordered by series count by default).
+    sort: Option<SortOrderArg>,
+    /// Maximum number of tags to return.
+    limit: Option<u32>,
+}
+
+/// Input parameters for the `get_release_related_tags` tool.
+#[derive(Debug, Deserialize, JsonSchema)]
+struct GetReleaseRelatedTagsParams {
+    /// The FRED release id, e.g. 53 (Gross Domestic Product).
+    release_id: u32,
+    /// Seed tag names; returns the tags co-occurring, within the release, with
+    /// *all* of them.
+    tag_names: Vec<String>,
+    /// Restrict the related tags to those matching this text.
+    search_text: Option<String>,
+    /// Sort direction (tags are ordered by series count by default).
+    sort: Option<SortOrderArg>,
+    /// Maximum number of tags to return.
+    limit: Option<u32>,
+}
+
+/// Input parameters for the `get_series_search_tags` tool.
+#[derive(Debug, Deserialize, JsonSchema)]
+struct GetSeriesSearchTagsParams {
+    /// The series search text, e.g. "unemployment rate".
+    search_text: String,
+    /// Restrict to tags matching this text (FRED's `tag_search_text`).
+    tag_search_text: Option<String>,
+    /// Sort direction (tags are ordered by series count by default).
+    sort: Option<SortOrderArg>,
+    /// Maximum number of tags to return.
+    limit: Option<u32>,
+}
+
+/// Input parameters for the `get_series_search_related_tags` tool.
+#[derive(Debug, Deserialize, JsonSchema)]
+struct GetSeriesSearchRelatedTagsParams {
+    /// The series search text, e.g. "unemployment rate".
+    search_text: String,
+    /// Seed tag names; returns the tags co-occurring, among the matching series,
+    /// with *all* of them.
+    tag_names: Vec<String>,
+    /// Restrict the related tags to those matching this text (FRED's
+    /// `tag_search_text`).
+    tag_search_text: Option<String>,
+    /// Sort direction (tags are ordered by series count by default).
+    sort: Option<SortOrderArg>,
+    /// Maximum number of tags to return.
+    limit: Option<u32>,
 }
 
 /// Input parameters for the `get_sources` tool.
@@ -900,6 +991,150 @@ impl FredServer {
     }
 
     #[tool(
+        name = "get_category_tags",
+        description = "List the tags used by the series in a FRED category (the tag facets for \
+                       browsing a category), with pagination metadata. Optionally filter by search \
+                       text; supports sort direction and a result limit."
+    )]
+    async fn get_category_tags(
+        &self,
+        Parameters(params): Parameters<GetCategoryTagsParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let mut request = self.client.category_tags(CategoryId::new(params.category_id));
+        if let Some(text) = params.search_text {
+            request = request.search_text(text);
+        }
+        if let Some(sort) = params.sort {
+            request = request.sort_order(sort.into());
+        }
+        if let Some(limit) = params.limit {
+            request = request.limit(limit);
+        }
+        send_tags_request(request).await
+    }
+
+    #[tool(
+        name = "get_category_related_tags",
+        description = "Given seed tags, list the tags that co-occur with all of them within a FRED \
+                       category — refine a category browse by discovering adjacent tags. Optionally \
+                       filter by search text; supports sort direction and a result limit."
+    )]
+    async fn get_category_related_tags(
+        &self,
+        Parameters(params): Parameters<GetCategoryRelatedTagsParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let mut request = self
+            .client
+            .category_related_tags(CategoryId::new(params.category_id), &params.tag_names);
+        if let Some(text) = params.search_text {
+            request = request.search_text(text);
+        }
+        if let Some(sort) = params.sort {
+            request = request.sort_order(sort.into());
+        }
+        if let Some(limit) = params.limit {
+            request = request.limit(limit);
+        }
+        send_tags_request(request).await
+    }
+
+    #[tool(
+        name = "get_release_tags",
+        description = "List the tags used by the series in a FRED release (the tag facets for \
+                       browsing a release), with pagination metadata. Optionally filter by search \
+                       text; supports sort direction and a result limit."
+    )]
+    async fn get_release_tags(
+        &self,
+        Parameters(params): Parameters<GetReleaseTagsParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let mut request = self.client.release_tags(ReleaseId::new(params.release_id));
+        if let Some(text) = params.search_text {
+            request = request.search_text(text);
+        }
+        if let Some(sort) = params.sort {
+            request = request.sort_order(sort.into());
+        }
+        if let Some(limit) = params.limit {
+            request = request.limit(limit);
+        }
+        send_tags_request(request).await
+    }
+
+    #[tool(
+        name = "get_release_related_tags",
+        description = "Given seed tags, list the tags that co-occur with all of them within a FRED \
+                       release. Optionally filter by search text; supports sort direction and a \
+                       result limit."
+    )]
+    async fn get_release_related_tags(
+        &self,
+        Parameters(params): Parameters<GetReleaseRelatedTagsParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let mut request = self
+            .client
+            .release_related_tags(ReleaseId::new(params.release_id), &params.tag_names);
+        if let Some(text) = params.search_text {
+            request = request.search_text(text);
+        }
+        if let Some(sort) = params.sort {
+            request = request.sort_order(sort.into());
+        }
+        if let Some(limit) = params.limit {
+            request = request.limit(limit);
+        }
+        send_tags_request(request).await
+    }
+
+    #[tool(
+        name = "get_series_search_tags",
+        description = "List the tags on the series matching a full-text search (its tag facets, for \
+                       narrowing the search down), with pagination metadata. Optionally filter the \
+                       tags by text; supports sort direction and a result limit."
+    )]
+    async fn get_series_search_tags(
+        &self,
+        Parameters(params): Parameters<GetSeriesSearchTagsParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let mut request = self.client.series_search_tags(params.search_text);
+        if let Some(text) = params.tag_search_text {
+            request = request.search_text(text);
+        }
+        if let Some(sort) = params.sort {
+            request = request.sort_order(sort.into());
+        }
+        if let Some(limit) = params.limit {
+            request = request.limit(limit);
+        }
+        send_tags_request(request).await
+    }
+
+    #[tool(
+        name = "get_series_search_related_tags",
+        description = "Given seed tags, list the tags that co-occur with all of them among the \
+                       series matching a full-text search. Optionally filter the tags by text; \
+                       supports sort direction and a result limit."
+    )]
+    async fn get_series_search_related_tags(
+        &self,
+        Parameters(params): Parameters<GetSeriesSearchRelatedTagsParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let mut request = self
+            .client
+            .series_search_related_tags(params.search_text, &params.tag_names);
+        if let Some(text) = params.tag_search_text {
+            request = request.search_text(text);
+        }
+        if let Some(sort) = params.sort {
+            request = request.sort_order(sort.into());
+        }
+        if let Some(limit) = params.limit {
+            request = request.limit(limit);
+        }
+        send_tags_request(request).await
+    }
+
+    #[tool(
         name = "get_series_categories",
         description = "List the categories a FRED series belongs to (the reverse of \
                        get_category_series): given a series id, where it sits in the category tree."
@@ -952,6 +1187,23 @@ impl FredServer {
     }
 }
 
+/// Send a scoped tags request and wrap the outcome the way every tool does:
+/// structured JSON on success, a tool-level error message on a FRED-side
+/// failure. Shared by the six scoped tag-facet tools, which all return
+/// `TagsResults`.
+async fn send_tags_request(request: TagsRequest<'_>) -> Result<CallToolResult, ErrorData> {
+    match request.send().await {
+        Ok(results) => {
+            let value = serde_json::to_value(&results)
+                .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+            Ok(CallToolResult::structured(value))
+        }
+        Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(
+            error.to_string(),
+        )])),
+    }
+}
+
 /// Parse a `YYYY-MM-DD` date from a tool argument, mapping a bad format to an
 /// `invalid_params` protocol error naming the offending field.
 fn parse_date(raw: &str, field: &str) -> Result<NaiveDate, ErrorData> {
@@ -987,10 +1239,14 @@ impl ServerHandler for FredServer {
              get_release_sources (the sources a release draws from), and get_release_dates (one \
              release's publication dates) — \
              the source tools — get_sources (list data providers), \
-             get_source, and get_source_releases (the releases from a source) — and the tag \
+             get_source, and get_source_releases (the releases from a source) — the tag \
              tools — get_tags (browse/search keywords), get_related_tags (tags co-occurring with \
              a seed set), get_tags_series (series carrying a set of tags), and get_series_tags (a \
-             series' tags)."
+             series' tags) — and the scoped tag-facet tools, which list the tags (or, for the \
+             related_tags variants, the tags co-occurring with a seed set) of one category, \
+             release, or series search: get_category_tags, get_category_related_tags, \
+             get_release_tags, get_release_related_tags, get_series_search_tags, and \
+             get_series_search_related_tags."
                 .to_string(),
         );
         info
@@ -1203,6 +1459,47 @@ mod tests {
         assert_eq!(params.search_text.as_deref(), Some("quarterly"));
         assert!(matches!(params.sort, Some(SortOrderArg::Asc)));
         assert!(params.limit.is_none());
+    }
+
+    #[test]
+    fn scoped_tag_params_deserialize_id_scopes() {
+        let cat: GetCategoryTagsParams =
+            serde_json::from_value(serde_json::json!({"category_id": 125, "search_text": "gdp"}))
+                .unwrap();
+        assert_eq!(cat.category_id, 125);
+        assert_eq!(cat.search_text.as_deref(), Some("gdp"));
+        assert!(cat.sort.is_none() && cat.limit.is_none());
+
+        let rel: GetReleaseRelatedTagsParams = serde_json::from_value(serde_json::json!({
+            "release_id": 53,
+            "tag_names": ["gdp", "quarterly"]
+        }))
+        .unwrap();
+        assert_eq!(rel.release_id, 53);
+        assert_eq!(rel.tag_names, ["gdp", "quarterly"]);
+        assert!(rel.search_text.is_none());
+    }
+
+    #[test]
+    fn series_search_tag_params_carry_search_and_tag_filter() {
+        // The series search is required; the tag filter goes out separately as
+        // `tag_search_text`.
+        let tags: GetSeriesSearchTagsParams = serde_json::from_value(serde_json::json!({
+            "search_text": "unemployment",
+            "tag_search_text": "rate"
+        }))
+        .unwrap();
+        assert_eq!(tags.search_text, "unemployment");
+        assert_eq!(tags.tag_search_text.as_deref(), Some("rate"));
+
+        let related: GetSeriesSearchRelatedTagsParams = serde_json::from_value(serde_json::json!({
+            "search_text": "unemployment",
+            "tag_names": ["monthly"]
+        }))
+        .unwrap();
+        assert_eq!(related.search_text, "unemployment");
+        assert_eq!(related.tag_names, ["monthly"]);
+        assert!(related.tag_search_text.is_none());
     }
 
     #[test]
