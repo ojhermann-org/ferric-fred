@@ -12,7 +12,8 @@ use anyhow::{Context, Result};
 use chrono::NaiveDate;
 use clap::{Args, Parser, Subcommand};
 use ferric_fred::{
-    CategoryId, Client, ObservationsRequest, ReleaseId, SeriesId, SourceId, TagsRequest,
+    CategoryId, Client, ObservationsRequest, ReleaseElementId, ReleaseId, ReleaseTableElement,
+    SeriesId, SourceId, TagsRequest,
 };
 
 use args::{AggregationArg, FrequencyArg, OrderByArg, SortOrderArg, UnitsArg, UpdatesFilterArg};
@@ -114,13 +115,14 @@ enum Command {
         sort: Option<SortOrderArg>,
     },
     /// List FRED data releases, show one, or list a release's series, sources,
-    /// dates, or tags.
+    /// dates, tags, or table tree.
     ///
     /// With no id, lists all releases — or, with `--dates`, the publication
     /// calendar across every release. With an id, shows that release; add
     /// `--series` to list the series it publishes, `--sources` to list the
-    /// sources it draws from, `--dates` for that release's own dates, or
-    /// `--tags` / `--related-tags` for the tags of its series.
+    /// sources it draws from, `--dates` for that release's own dates,
+    /// `--tags` / `--related-tags` for the tags of its series, or `--tables`
+    /// for its table tree.
     Release {
         /// Release id. Omit to list all releases.
         id: Option<u32>,
@@ -146,6 +148,14 @@ enum Command {
         #[arg(long, requires = "id", value_delimiter = ',', value_name = "TAGS",
               conflicts_with_all = ["series", "sources", "dates", "tags"])]
         related_tags: Vec<String>,
+        /// With an id: print the release's table tree (sections, tables, and
+        /// the series rows nested beneath them).
+        #[arg(long, requires = "id",
+              conflicts_with_all = ["series", "sources", "dates", "tags", "related_tags"])]
+        tables: bool,
+        /// With `--tables`: print only the subtree rooted at this element id.
+        #[arg(long, requires = "tables", value_name = "ELEMENT_ID")]
+        element: Option<u32>,
         /// Maximum number of results (applies to the list, `--series`, `--dates`, and tag views).
         #[arg(long)]
         limit: Option<u32>,
@@ -363,6 +373,8 @@ async fn main() -> Result<()> {
             include_no_data,
             tags,
             related_tags,
+            tables,
+            element,
             limit,
             order_by,
             sort,
@@ -377,6 +389,8 @@ async fn main() -> Result<()> {
                     include_no_data,
                     tags,
                     related_tags,
+                    tables,
+                    element,
                     limit,
                     order_by,
                     sort,
@@ -730,6 +744,22 @@ async fn category(client: &Client, args: CategoryArgs, json: bool) -> Result<()>
     Ok(())
 }
 
+/// Print a release-table element and its descendants, indented by depth. A
+/// `series`-type row shows its series id in brackets.
+fn print_table_element(element: &ReleaseTableElement, depth: usize) {
+    let indent = "  ".repeat(depth);
+    match &element.series_id {
+        Some(series_id) => println!(
+            "{indent}{}  ({}, {series_id})",
+            element.name, element.element_type
+        ),
+        None => println!("{indent}{}  ({})", element.name, element.element_type),
+    }
+    for child in &element.children {
+        print_table_element(child, depth + 1);
+    }
+}
+
 /// Parsed arguments for the `release` command. A struct rather than positional
 /// parameters because `release` now carries several mutually-exclusive view
 /// flags (`--series`/`--sources`/`--dates`/`--tags`/`--related-tags`) plus their
@@ -742,6 +772,8 @@ struct ReleaseArgs {
     include_no_data: bool,
     tags: bool,
     related_tags: Vec<String>,
+    tables: bool,
+    element: Option<u32>,
     limit: Option<u32>,
     order_by: Option<OrderByArg>,
     sort: Option<SortOrderArg>,
@@ -756,6 +788,8 @@ async fn release(client: &Client, args: ReleaseArgs, json: bool) -> Result<()> {
         include_no_data,
         tags,
         related_tags,
+        tables,
+        element,
         limit,
         order_by,
         sort,
@@ -917,6 +951,35 @@ async fn release(client: &Client, args: ReleaseArgs, json: bool) -> Result<()> {
             json,
         )
         .await;
+    }
+
+    if tables {
+        let mut request = client.release_tables(release_id);
+        if let Some(element_id) = element {
+            request = request.element(ReleaseElementId::new(element_id));
+        }
+
+        let table = request
+            .send()
+            .await
+            .with_context(|| format!("fetching table tree for release {id} failed"))?;
+
+        if json {
+            return print_json(&table);
+        }
+
+        match &table.name {
+            Some(name) => println!("release {id} table — {name}:"),
+            None => println!("release {id} tables:"),
+        }
+        if table.roots.is_empty() {
+            println!("  (no table elements)");
+        } else {
+            for root in &table.roots {
+                print_table_element(root, 1);
+            }
+        }
+        return Ok(());
     }
 
     let release = client

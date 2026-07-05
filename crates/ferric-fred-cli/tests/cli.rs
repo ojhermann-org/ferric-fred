@@ -163,6 +163,38 @@ fn release_tags_conflicts_with_dates() {
 }
 
 #[test]
+fn release_tables_requires_id() {
+    // --tables scopes to a release, so it needs an id (clap `requires`).
+    fred()
+        .args(["release", "--tables"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("required arguments"))
+        .stderr(predicate::str::contains("<ID>"));
+}
+
+#[test]
+fn release_element_requires_tables() {
+    // --element only makes sense with --tables (clap `requires`).
+    fred()
+        .args(["release", "10", "--element", "34483"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("required arguments"))
+        .stderr(predicate::str::contains("--tables"));
+}
+
+#[test]
+fn release_tables_conflicts_with_series() {
+    // --tables is a distinct view from the other release views.
+    fred()
+        .args(["release", "10", "--tables", "--series"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("cannot be used with"));
+}
+
+#[test]
 fn search_tags_and_related_tags_conflict() {
     // The two tag views on `search` are mutually exclusive.
     fred()
@@ -358,6 +390,13 @@ fn release_list_and_single_and_series() {
         .assert()
         .success()
         .stdout(predicate::str::contains("release dates for release 53"));
+
+    // The table tree of release 10 (CPI), scoped to a subtree by element id.
+    fred()
+        .args(["release", "10", "--tables", "--element", "34483"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("release 10 table —"));
 }
 
 #[test]

@@ -64,6 +64,8 @@ fred release 53 --sources                                       # sources a rele
 fred release --dates --limit 5                                  # release calendar (all releases)
 fred release 53 --dates                                         # one release's publication dates
 fred release 53 --tags --limit 5                               # tags used by a release's series
+fred release 10 --tables                                        # a release's table tree (indented)
+fred release 10 --tables --element 34483                        # just one subtree of the tree
 fred source                                                     # list all data sources
 fred source 18                                                  # a source's metadata
 fred source 18 --releases --limit 5                            # releases produced by a source
