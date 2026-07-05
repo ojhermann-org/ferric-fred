@@ -7,7 +7,8 @@
 //! Tools: `search_series`, `get_series`, `get_observations`, `get_series_updates`,
 //! `get_series_vintagedates`, `get_series_categories`, `get_series_release`, the
 //! category tools
-//! (`get_category`, `get_category_children`, `get_category_series`), the release
+//! (`get_category`, `get_category_children`, `get_category_related`,
+//! `get_category_series`), the release
 //! tools (`get_releases`, `get_releases_dates`, `get_release`,
 //! `get_release_series`, `get_release_sources`, `get_release_dates`), the source
 //! tools
@@ -560,6 +561,35 @@ impl FredServer {
                     "category_id": params.category_id,
                     "count": children.len(),
                     "children": children,
+                });
+                Ok(CallToolResult::structured(value))
+            }
+            Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(
+                error.to_string(),
+            )])),
+        }
+    }
+
+    #[tool(
+        name = "get_category_related",
+        description = "List the categories related to a FRED category — cross-links to sibling \
+                       topics elsewhere in the tree, distinct from its parent/child hierarchy. \
+                       Often empty."
+    )]
+    async fn get_category_related(
+        &self,
+        Parameters(params): Parameters<CategoryParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match self
+            .client
+            .category_related(CategoryId::new(params.category_id))
+            .await
+        {
+            Ok(related) => {
+                let value = serde_json::json!({
+                    "category_id": params.category_id,
+                    "count": related.len(),
+                    "related": related,
                 });
                 Ok(CallToolResult::structured(value))
             }
@@ -1235,7 +1265,8 @@ impl ServerHandler for FredServer {
              get_series_updates (recently updated series), get_series_vintagedates (a series' \
              revision dates), get_series_categories and get_series_release (a series' categories / \
              release), the category tools — get_category, get_category_children (walk the category tree from \
-             the root, id 0), and get_category_series (the series in a category) — the release \
+             the root, id 0), get_category_related (related categories), and get_category_series \
+             (the series in a category) — the release \
              tools — get_releases (list publications), get_releases_dates (the release calendar \
              across all releases), get_release, get_release_series (the series in a release), \
              get_release_sources (the sources a release draws from), and get_release_dates (one \
@@ -1315,6 +1346,7 @@ mod tests {
 
     #[test]
     fn category_params_deserialize_from_arguments() {
+        // Shared by get_category, get_category_children, and get_category_related.
         let params: CategoryParams =
             serde_json::from_value(serde_json::json!({"category_id": 125})).unwrap();
         assert_eq!(params.category_id, 125);
