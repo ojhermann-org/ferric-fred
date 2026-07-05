@@ -24,8 +24,9 @@ are managed on top of that (see the ADRs).
 ## Status
 
 Early construction. The library covers the `series` endpoints (`series`,
-`series/observations`, `series/search`, `series/categories`, `series/release`,
-`series/tags`), `category` (`category`, `category/children`, `category/series`),
+`series/observations`, `series/search`, `series/updates`, `series/categories`,
+`series/release`, `series/tags`), `category` (`category`, `category/children`,
+`category/series`),
 `release` (`releases`, `release`, `release/series`), `source` (`sources`,
 `source`, `source/releases`), and `tag` (`tags`, `related_tags`, `tags/series`);
 the `fred` CLI (this repo's first consumer) can search, show series metadata,
@@ -53,6 +54,7 @@ fred release 53 --series --limit 5                              # series in a re
 fred source                                                     # list all data sources
 fred source 18                                                  # a source's metadata
 fred source 18 --releases --limit 5                            # releases produced by a source
+fred updates --filter macro --limit 10                          # recently updated series
 fred tags --search-text quarterly --limit 5                     # browse/search the tag vocabulary
 fred tags gdp quarterly --limit 5                               # series carrying all these tags
 fred tags gdp --related --limit 5                               # tags that co-occur with gdp

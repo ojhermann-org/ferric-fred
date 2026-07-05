@@ -13,7 +13,7 @@ use chrono::NaiveDate;
 use clap::{Args, Parser, Subcommand};
 use ferric_fred::{CategoryId, Client, ObservationsRequest, ReleaseId, SeriesId, SourceId};
 
-use args::{AggregationArg, FrequencyArg, OrderByArg, SortOrderArg, UnitsArg};
+use args::{AggregationArg, FrequencyArg, OrderByArg, SortOrderArg, UnitsArg, UpdatesFilterArg};
 
 /// Typed command-line access to FRED (Federal Reserve Economic Data).
 #[derive(Parser)]
@@ -113,6 +113,15 @@ enum Command {
         /// Sort order.
         #[arg(long)]
         sort: Option<SortOrderArg>,
+    },
+    /// List the series updated most recently (a "what changed" feed).
+    Updates {
+        /// Narrow to a class of series (default: all).
+        #[arg(long)]
+        filter: Option<UpdatesFilterArg>,
+        /// Maximum number of results to show.
+        #[arg(long, default_value_t = 20)]
+        limit: u32,
     },
     /// List FRED data sources, show one, or list a source's releases.
     ///
@@ -236,6 +245,7 @@ async fn main() -> Result<()> {
             sort,
         } => source(&client, id, releases, limit, sort, json).await,
         Command::Tags { names, options } => tags(&client, names, &options, json).await,
+        Command::Updates { filter, limit } => updates(&client, filter, limit, json).await,
     }
 }
 
@@ -685,6 +695,33 @@ async fn tags(
     }
 
     println!("{} series tagged {}:", results.count, names.join(", "));
+    for series in &results.series {
+        println!("{}\t{}", series.id, series.title);
+    }
+    Ok(())
+}
+
+async fn updates(
+    client: &Client,
+    filter: Option<UpdatesFilterArg>,
+    limit: u32,
+    json: bool,
+) -> Result<()> {
+    let mut request = client.series_updates().limit(limit);
+    if let Some(filter) = filter {
+        request = request.filter(filter.into());
+    }
+
+    let results = request
+        .send()
+        .await
+        .context("fetching recently updated series failed")?;
+
+    if json {
+        return print_json(&results);
+    }
+
+    println!("{} series updated recently:", results.count);
     for series in &results.series {
         println!("{}\t{}", series.id, series.title);
     }

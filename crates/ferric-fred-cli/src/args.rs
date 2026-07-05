@@ -4,7 +4,7 @@
 //! variants as kebab-case values (e.g. `SearchRank` → `search-rank`).
 
 use clap::ValueEnum;
-use ferric_fred::{AggregationMethod, Frequency, OrderBy, SortOrder, Units};
+use ferric_fred::{AggregationMethod, Frequency, OrderBy, SortOrder, Units, UpdatesFilter};
 
 /// `--units` transformation (values are FRED's short codes).
 #[derive(Clone, Copy, ValueEnum)]
@@ -140,6 +140,27 @@ impl From<AggregationArg> for AggregationMethod {
             AggregationArg::Avg => Self::Average,
             AggregationArg::Sum => Self::Sum,
             AggregationArg::Eop => Self::EndOfPeriod,
+        }
+    }
+}
+
+/// `--filter` class for the `updates` command.
+#[derive(Clone, Copy, ValueEnum)]
+pub(crate) enum UpdatesFilterArg {
+    /// All updated series.
+    All,
+    /// Macroeconomic series only.
+    Macro,
+    /// Regional series only.
+    Regional,
+}
+
+impl From<UpdatesFilterArg> for UpdatesFilter {
+    fn from(value: UpdatesFilterArg) -> Self {
+        match value {
+            UpdatesFilterArg::All => Self::All,
+            UpdatesFilterArg::Macro => Self::Macro,
+            UpdatesFilterArg::Regional => Self::Regional,
         }
     }
 }

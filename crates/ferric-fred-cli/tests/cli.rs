@@ -31,7 +31,18 @@ fn help_lists_every_subcommand() {
         .stdout(predicate::str::contains("category"))
         .stdout(predicate::str::contains("release"))
         .stdout(predicate::str::contains("source"))
-        .stdout(predicate::str::contains("tags"));
+        .stdout(predicate::str::contains("tags"))
+        .stdout(predicate::str::contains("updates"));
+}
+
+#[test]
+fn updates_invalid_filter_lists_the_choices() {
+    fred()
+        .args(["updates", "--filter", "bogus"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("invalid value"))
+        .stderr(predicate::str::contains("macro"));
 }
 
 #[test]
@@ -246,6 +257,17 @@ fn source_list_and_single_and_releases() {
         .assert()
         .success()
         .stdout(predicate::str::contains("releases from source 18"));
+}
+
+#[test]
+#[ignore = "hits the live FRED API; requires FRED_API_KEY"]
+fn updates_lists_recently_updated_series() {
+    Command::cargo_bin("fred")
+        .unwrap()
+        .args(["updates", "--filter", "macro", "--limit", "3"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("series updated recently"));
 }
 
 #[test]
