@@ -1,0 +1,82 @@
+# Contributing to ferric-fred
+
+Thanks for your interest! `ferric-fred` is a typed Rust client for the
+[FRED](https://fred.stlouisfed.org/) API, plus a CLI and an MCP server. Bug
+reports, questions, and pull requests are all welcome.
+
+By contributing, you agree that your contributions are licensed under the
+project's dual **MIT OR Apache-2.0** license (see
+[ADR-0006](docs/adr/0006-license.md) and `LICENSE-MIT` / `LICENSE-APACHE`).
+
+## Getting set up
+
+A [Nix](https://nixos.org/) flake supplies a reproducible toolchain (recent
+stable Rust, `cargo-nextest`, `cargo-deny`, `gitleaks`, and the rest):
+
+```sh
+nix develop        # enter the dev shell
+# or, with direnv: `direnv allow` once, then it loads automatically
+```
+
+Nix is optional — a normal `rustup` toolchain works too; the flake supplies the
+environment, not the build ([ADR-0008](docs/adr/0008-nix-flake-dev-environment.md)).
+
+Most tests run offline (HTTP is mocked — [ADR-0011](docs/adr/0011-testing-strategy.md)).
+The `#[ignore]`d live tests hit the real FRED API and need a free key in
+`FRED_API_KEY` (get one at <https://fredaccount.stlouisfed.org/apikeys>); see the
+README's [Secrets](README.md#secrets) section.
+
+## The gate
+
+CI runs the same checks the `pre-push` hook does, through the same flake, so a
+push that passes locally passes CI. Before opening a PR, make sure these are
+green:
+
+```sh
+cargo fmt --all                          # formatting (CI checks --check)
+cargo clippy --all-targets -- -D warnings  # lints; warnings are errors
+cargo nextest run                        # the offline test suite
+cargo test --doc                         # doctests
+cargo deny check                         # licenses, advisories, bans, sources
+```
+
+Enable the tracked git hooks once per clone (`core.hooksPath` is local config and
+isn't carried by git):
+
+```sh
+git config core.hooksPath .githooks
+```
+
+`pre-commit` is a secret guard ([ADR-0014](docs/adr/0014-pre-commit-secret-guard.md));
+`pre-push` runs fmt + clippy + tests.
+
+## Commit messages
+
+Commits follow [Conventional Commits](https://www.conventionalcommits.org/) —
+they are load-bearing: [`release-plz`](https://release-plz.dev/) derives each
+crate's version bump and changelog from them
+([ADR-0012](docs/adr/0012-ci-versioning-and-release.md)).
+
+Use `feat`, `fix`, `docs`, `test`, `ci`, `build`, `refactor`, `style`, or
+`chore`; a `!` (e.g. `feat!:`) or a `BREAKING CHANGE:` footer marks a breaking
+change. Keep each commit to one logical layer where practical.
+
+## Adding an endpoint
+
+New FRED endpoints follow the vertical-slice pattern in
+[ADR-0013](docs/adr/0013-endpoint-addition-pattern.md): a typed request/response
+in the library, then the CLI subcommand, then the MCP tool — with offline
+(wiremock) tests plus an `#[ignore]`d live test at each layer, one commit per
+layer. Significant design choices get their own ADR (copy
+`docs/adr/0000-adr-template.md`, take the next number, add it to
+[the index](docs/adr/README.md)).
+
+## Pull requests
+
+1. Fork the repo and branch off `main`.
+2. Make your change with tests; keep the gate green.
+3. Open a PR against `main`. CI must pass; a maintainer will review and merge.
+
+`main` is protected: changes land through PRs, and the CI check must pass before
+merge. Please be respectful and constructive in issues and reviews — assume good
+faith and keep discussion focused on the work.
