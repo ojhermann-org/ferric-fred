@@ -131,6 +131,17 @@ fn category_tag_views_are_mutually_exclusive() {
 }
 
 #[test]
+fn category_related_conflicts_with_series() {
+    // --related (related categories) is a distinct view from --series; the two
+    // must not combine (and it is distinct from --related-tags).
+    fred()
+        .args(["category", "125", "--related", "--series"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("cannot be used with"));
+}
+
+#[test]
 fn release_tags_requires_id() {
     // --tags scopes to a release, so it needs an id (clap `requires`).
     fred()
@@ -292,6 +303,18 @@ fn category_series_lists_series() {
         .assert()
         .success()
         .stdout(predicate::str::contains("series in category 125"));
+}
+
+#[test]
+#[ignore = "hits the live FRED API; requires FRED_API_KEY"]
+fn category_related_lists_related() {
+    // 32073 (a regional category) has related categories (the states).
+    Command::cargo_bin("fred")
+        .unwrap()
+        .args(["category", "32073", "--related"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("categories related to 32073"));
 }
 
 #[test]

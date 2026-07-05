@@ -83,12 +83,16 @@ enum Command {
     /// Browse the FRED category tree, or list a category's series or tags.
     ///
     /// With no flags, prints the category and its child categories (the root,
-    /// id 0, by default). With `--series`, lists the series in the category;
-    /// with `--tags` / `--related-tags`, the tags used by those series.
+    /// id 0, by default). With `--related`, lists related categories elsewhere
+    /// in the tree; with `--series`, the series in the category; with `--tags` /
+    /// `--related-tags`, the tags used by those series.
     Category {
         /// Category id (default: 0, the tree root).
         #[arg(default_value_t = 0)]
         id: u32,
+        /// List categories related to this one instead of its child categories.
+        #[arg(long, group = "view")]
+        related: bool,
         /// List the series in the category instead of its child categories.
         #[arg(long, group = "view")]
         series: bool,
@@ -327,6 +331,7 @@ async fn main() -> Result<()> {
         Command::Chart { id, options } => chart_command(&client, &id, &options).await,
         Command::Category {
             id,
+            related,
             series,
             tags,
             related_tags,
@@ -338,6 +343,7 @@ async fn main() -> Result<()> {
                 &client,
                 CategoryArgs {
                     id,
+                    related,
                     series,
                     tags,
                     related_tags,
@@ -600,9 +606,10 @@ async fn series(client: &Client, id: &str, view: SeriesView, json: bool) -> Resu
 }
 
 /// Parsed arguments for the `category` command: browse the tree, or list a
-/// category's series or tag facets.
+/// category's related categories, series, or tag facets.
 struct CategoryArgs {
     id: u32,
+    related: bool,
     series: bool,
     tags: bool,
     related_tags: Vec<String>,
@@ -614,6 +621,7 @@ struct CategoryArgs {
 async fn category(client: &Client, args: CategoryArgs, json: bool) -> Result<()> {
     let CategoryArgs {
         id,
+        related,
         series,
         tags,
         related_tags,
@@ -622,6 +630,23 @@ async fn category(client: &Client, args: CategoryArgs, json: bool) -> Result<()>
         sort,
     } = args;
     let category_id = CategoryId::new(id);
+
+    if related {
+        let categories = client
+            .category_related(category_id)
+            .await
+            .with_context(|| format!("fetching categories related to {id} failed"))?;
+
+        if json {
+            return print_json(&categories);
+        }
+
+        println!("{} categories related to {id}:", categories.len());
+        for category in &categories {
+            println!("{}\t{}", category.id, category.name);
+        }
+        return Ok(());
+    }
 
     if tags {
         return print_tags_result(

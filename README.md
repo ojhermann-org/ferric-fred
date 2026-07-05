@@ -53,6 +53,7 @@ fred observations GDP --frequency annual --aggregation avg       # aggregate to 
 fred chart GNPCA --start 1950-01-01                              # interactive terminal chart
 fred category                                                    # browse the category tree (root)
 fred category 13                                                 # a category and its children
+fred category 32073 --related                                   # categories related to one
 fred category 125 --series --limit 5                            # series in a category
 fred category 125 --tags --limit 5                             # tags used by a category's series
 fred category 125 --related-tags trade --limit 5              # tags co-occurring with a seed, in a category
