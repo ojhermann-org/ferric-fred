@@ -9,7 +9,7 @@ mod args;
 mod chart;
 
 use anyhow::{Context, Result};
-use chrono::NaiveDate;
+use chrono::{NaiveDate, NaiveDateTime};
 use clap::{Args, Parser, Subcommand};
 use ferric_fred::{
     CategoryId, Client, ObservationsRequest, ReleaseElementId, ReleaseId, ReleaseTableElement,
@@ -171,6 +171,13 @@ enum Command {
         /// Narrow to a class of series (default: all).
         #[arg(long)]
         filter: Option<UpdatesFilterArg>,
+        /// Only series updated at/after this time (needs `--end-time`), e.g.
+        /// `2024-03-01T14:30` or `2024-03-01 14:30` — FRED's timezone.
+        #[arg(long, value_parser = parse_datetime, requires = "end_time")]
+        start_time: Option<NaiveDateTime>,
+        /// Only series updated at/before this time (needs `--start-time`).
+        #[arg(long, value_parser = parse_datetime, requires = "start_time")]
+        end_time: Option<NaiveDateTime>,
         /// Maximum number of results to show.
         #[arg(long, default_value_t = 20)]
         limit: u32,
@@ -406,7 +413,12 @@ async fn main() -> Result<()> {
             sort,
         } => source(&client, id, releases, limit, sort, json).await,
         Command::Tags { names, options } => tags(&client, names, &options, json).await,
-        Command::Updates { filter, limit } => updates(&client, filter, limit, json).await,
+        Command::Updates {
+            filter,
+            start_time,
+            end_time,
+            limit,
+        } => updates(&client, filter, start_time, end_time, limit, json).await,
     }
 }
 
@@ -1174,15 +1186,42 @@ async fn tags(
     Ok(())
 }
 
+/// Parse a `--start-time` / `--end-time` value into a `NaiveDateTime`. Accepts
+/// `YYYY-MM-DDTHH:MM[:SS]` or `YYYY-MM-DD HH:MM[:SS]` (seconds optional). FRED's
+/// window is minute-granularity in its own timezone (ADR-0019).
+fn parse_datetime(raw: &str) -> Result<NaiveDateTime, String> {
+    const FORMATS: [&str; 4] = [
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%dT%H:%M",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+    ];
+    FORMATS
+        .iter()
+        .find_map(|fmt| NaiveDateTime::parse_from_str(raw, fmt).ok())
+        .ok_or_else(|| {
+            format!(
+                "expected a date-time like `2024-03-01T14:30` or `2024-03-01 14:30`, got `{raw}`"
+            )
+        })
+}
+
 async fn updates(
     client: &Client,
     filter: Option<UpdatesFilterArg>,
+    start_time: Option<NaiveDateTime>,
+    end_time: Option<NaiveDateTime>,
     limit: u32,
     json: bool,
 ) -> Result<()> {
     let mut request = client.series_updates().limit(limit);
     if let Some(filter) = filter {
         request = request.filter(filter.into());
+    }
+    // clap enforces that `--start-time` and `--end-time` are given together, so
+    // by here they are both present or both absent.
+    if let (Some(start), Some(end)) = (start_time, end_time) {
+        request = request.time_window(start, end);
     }
 
     let results = request

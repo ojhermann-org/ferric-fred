@@ -46,6 +46,34 @@ fn updates_invalid_filter_lists_the_choices() {
 }
 
 #[test]
+fn updates_start_time_requires_end_time() {
+    // --start-time and --end-time are a required pair (clap `requires`); caught
+    // at parse time, before any network call.
+    fred()
+        .args(["updates", "--start-time", "2024-03-01T14:30"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("required arguments"))
+        .stderr(predicate::str::contains("--end-time"));
+}
+
+#[test]
+fn updates_rejects_a_malformed_time() {
+    fred()
+        .args([
+            "updates",
+            "--start-time",
+            "nope",
+            "--end-time",
+            "2024-03-02T00:00",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("invalid value"))
+        .stderr(predicate::str::contains("date-time"));
+}
+
+#[test]
 fn series_views_are_mutually_exclusive() {
     // --tags / --categories / --release form a clap group; caught at parse time.
     fred()

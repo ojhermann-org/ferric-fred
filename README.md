@@ -71,6 +71,7 @@ fred source                                                     # list all data 
 fred source 18                                                  # a source's metadata
 fred source 18 --releases --limit 5                            # releases produced by a source
 fred updates --filter macro --limit 10                          # recently updated series
+fred updates --start-time 2024-03-01T00:00 --end-time 2024-03-08T00:00  # updated within a time window
 fred tags --search-text quarterly --limit 5                     # browse/search the tag vocabulary
 fred tags gdp quarterly --limit 5                               # series carrying all these tags
 fred tags gdp --related --limit 5                               # tags that co-occur with gdp
