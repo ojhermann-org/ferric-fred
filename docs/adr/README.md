@@ -24,11 +24,13 @@ use them, and [`0000-adr-template.md`](0000-adr-template.md) for the template.
 | [0013](0013-endpoint-addition-pattern.md) | Endpoint-addition pattern | Accepted |
 | [0014](0014-pre-commit-secret-guard.md) | Pre-commit secret guard | Accepted |
 | [0015](0015-cli-binary-naming.md) | CLI & server binary names | Accepted |
+| [0016](0016-ci-live-tests-machine-identity.md) | CI live tests via an Infisical machine identity | Accepted |
 
 ## Backlog (proposed, not yet written)
 
 Decisions we intend to record, roughly in the order we expect to need them.
 Order and contents will change as we build.
 
-- Infisical machine-identity token for CI, to run the `#[ignore]` live tests
-  there — follow-up to ADR-0009 and ADR-0012
+_Currently empty — the foundational decisions are all recorded. New entries land
+here as they surface (e.g. `release/tables`' recursive shape, or a License
+choice if ADR-0006 is revisited)._

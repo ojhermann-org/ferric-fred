@@ -44,8 +44,9 @@ jobs:
       - name: Clippy (warnings are errors)
         run: nix develop --command bash -c "cargo clippy --all-targets -- -D warnings"
 
-      # Offline tests only. The #[ignore] live FRED tests are skipped here;
-      # running them in CI needs an Infisical machine identity (deferred; ADR-0009).
+      # Offline tests only. The #[ignore] live FRED tests run in a separate,
+      # nightly workflow (live.yml) that injects FRED_API_KEY via an Infisical
+      # machine identity — see ADR-0016.
       - name: Tests
         run: nix develop --command bash -c "cargo nextest run"
 

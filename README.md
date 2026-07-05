@@ -155,6 +155,15 @@ git):
 git config core.hooksPath .githooks
 ```
 
+### Continuous integration
+
+`ci.yml` runs the offline gate (fmt, clippy, tests, doctests, `cargo deny`) on
+every push and PR, through the same flake as local dev. A separate, **dormant**
+`live.yml` runs the `#[ignore]` live FRED tests nightly (and on demand) — it
+stays a green no-op until an Infisical machine identity is configured via the
+`INFISICAL_CLIENT_ID` / `INFISICAL_CLIENT_SECRET` repository secrets (see
+[ADR-0016](docs/adr/0016-ci-live-tests-machine-identity.md)).
+
 ## Secrets
 
 The client reads a **FRED API key** from the `FRED_API_KEY` environment

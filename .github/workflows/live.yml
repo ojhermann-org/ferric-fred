@@ -1,0 +1,93 @@
+name: Live FRED tests
+
+# The #[ignore] tests that hit the real FRED API (library live_*.rs and the CLI
+# live happy-paths). They need FRED_API_KEY, which CI obtains from Infisical via
+# a machine identity (ADR-0009 deferred this to "when we wire CI"; ADR-0016
+# specifies it).
+#
+# DORMANT until configured. The `gate` job checks whether the Infisical machine
+# identity secrets exist; if not, the `live` job is skipped and this workflow is
+# green (a no-op), so it never fails a repo that hasn't set the token yet.
+#
+# To activate, add two GitHub Actions repository secrets from an Infisical
+# machine identity (Universal Auth) with read access to dev:/shared:
+#   INFISICAL_CLIENT_ID
+#   INFISICAL_CLIENT_SECRET
+#
+# Runs nightly and on demand — not on every PR: these tests are an external-API
+# smoke test, kept off the fast PR path (rate limits, network flakiness).
+
+on:
+  schedule:
+    - cron: "17 6 * * *" # nightly ~06:17 UTC (runs on the default branch)
+  workflow_dispatch: # manual "Run workflow" button
+
+concurrency:
+  group: live-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: Check for Infisical machine identity
+    runs-on: ubuntu-latest
+    outputs:
+      configured: ${{ steps.check.outputs.configured }}
+    steps:
+      # Secrets can't be referenced in a job-level `if:`, so gate here and expose
+      # the result as an output the live job depends on.
+      - id: check
+        env:
+          INFISICAL_CLIENT_ID: ${{ secrets.INFISICAL_CLIENT_ID }}
+        run: |
+          if [ -n "${INFISICAL_CLIENT_ID}" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Infisical machine identity not configured (INFISICAL_CLIENT_ID / INFISICAL_CLIENT_SECRET absent) — skipping live FRED tests. See ADR-0016 to activate."
+          fi
+
+  live:
+    name: Live FRED tests
+    needs: gate
+    if: needs.gate.outputs.configured == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # Same flake as local dev and the main CI (ADR-0008): toolchain,
+      # cargo-nextest, and the infisical CLI all come from the dev shell.
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Expose the flake's Rust toolchain on PATH
+        run: nix develop --command bash -c 'dirname "$(command -v cargo)" >> "$GITHUB_PATH"'
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+
+      # Authenticate a machine identity via Universal Auth, then inject the
+      # secrets at dev:/shared (same env/path as local dev) and run only the
+      # #[ignore] tests. The project id is read from the committed
+      # .infisical.json so it stays single-sourced.
+      - name: Run live FRED tests
+        env:
+          INFISICAL_CLIENT_ID: ${{ secrets.INFISICAL_CLIENT_ID }}
+          INFISICAL_CLIENT_SECRET: ${{ secrets.INFISICAL_CLIENT_SECRET }}
+        run: |
+          INFISICAL_PROJECT_ID="$(jq -r .workspaceId .infisical.json)"
+          export INFISICAL_PROJECT_ID
+          nix develop --command bash -c '
+            set -euo pipefail
+            token="$(infisical login --method=universal-auth \
+              --client-id="$INFISICAL_CLIENT_ID" \
+              --client-secret="$INFISICAL_CLIENT_SECRET" \
+              --plain --silent)"
+            echo "::add-mask::$token"
+            infisical run --token="$token" \
+              --projectId="$INFISICAL_PROJECT_ID" \
+              --env=dev --path=/shared -- \
+              cargo nextest run --run-ignored ignored-only
+          '
