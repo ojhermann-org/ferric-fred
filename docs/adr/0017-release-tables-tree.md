@@ -1,6 +1,6 @@
 # ADR-0017: Modelling `release/tables` (the recursive table tree)
 
-- **Status:** Proposed <!-- Proposed | Accepted | Deprecated | Superseded by ADR-XXXX -->
+- **Status:** Accepted <!-- Proposed | Accepted | Deprecated | Superseded by ADR-XXXX -->
 - **Date:** 2026-07-05
 - **Deciders:** Project owner
 
@@ -83,12 +83,17 @@ than forced into the flat-list mould.
   the wire contract. `line` and `level` are likewise kept as `String` (FRED
   sends them as strings; `level` is redundant with nesting depth but retained
   for fidelity).
-- Add `ReleaseTable`, the top-level envelope: `name`, `element_id`
-  (`ReleaseElementId`), `release_id` (`ReleaseId`), and the roots. The keyed
-  `elements` object is deserialized into an ordered `Vec<ReleaseTableElement>`
-  (a `deserialize_with` that collects the object's *values*); each element
-  already carries its own id, so the map keys are redundant, and a `Vec` gives a
-  clean tree-walking API.
+- Add `ReleaseTable`, the top-level envelope: `name`, `element_id`, and the
+  roots. The keyed `elements` object is deserialized into an ordered
+  `Vec<ReleaseTableElement>` (a `deserialize_with` that collects the object's
+  *values* and sorts by element id); each element already carries its own id, so
+  the map keys are redundant, and a `Vec` gives a clean tree-walking API.
+  Implementation notes from the live shape: `name`/`element_id` are populated
+  only for a subtree request (whole-release requests send them as `null`), so
+  both are `Option`; and the top-level `release_id` arrives as a **string**
+  (while each element's is a number), so we **drop** the redundant top-level
+  field rather than special-case its type — the caller already knows the id and
+  each element still carries it.
 - Optional params → a builder, per ADR-0013: `Client::release_tables(release_id)
   -> ReleaseTablesRequest`, with `.element(ReleaseElementId)` to scope to a
   subtree, `.send() -> ReleaseTable`, and a private `Client::execute_release_tables`.

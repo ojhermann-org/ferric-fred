@@ -3,10 +3,10 @@ use serde::Deserialize;
 
 use crate::{
     Category, CategoryId, Error, Observation, ObservationsRequest, Release, ReleaseDatesRequest,
-    ReleaseDatesResults, ReleaseId, ReleasesRequest, ReleasesResults, Result, Series, SeriesId,
-    SeriesListRequest, SeriesSearchRequest, SeriesSearchResults, SeriesUpdatesRequest, Source,
-    SourceId, SourcesRequest, SourcesResults, TagsRequest, TagsResults, VintageDates,
-    VintageDatesRequest,
+    ReleaseDatesResults, ReleaseId, ReleaseTable, ReleaseTablesRequest, ReleasesRequest,
+    ReleasesResults, Result, Series, SeriesId, SeriesListRequest, SeriesSearchRequest,
+    SeriesSearchResults, SeriesUpdatesRequest, Source, SourceId, SourcesRequest, SourcesResults,
+    TagsRequest, TagsResults, VintageDates, VintageDatesRequest,
 };
 
 /// Base URL for the FRED REST API.
@@ -500,6 +500,34 @@ impl Client {
         ReleaseDatesRequest::with_release(self, "/release/dates", release_id.get().to_string())
     }
 
+    /// Begin a request for a release's table tree (the `fred/release/tables`
+    /// endpoint) — the nested layout (sections, tables, and series rows) a
+    /// release uses to present its series.
+    ///
+    /// Returns a builder; optionally scope to a subtree with
+    /// [`element`](ReleaseTablesRequest::element), then call
+    /// [`ReleaseTablesRequest::send`] to run it.
+    ///
+    /// ```no_run
+    /// # async fn run(client: &ferric_fred::Client) -> ferric_fred::Result<()> {
+    /// use ferric_fred::ReleaseId;
+    /// let table = client.release_tables(ReleaseId::new(10)).send().await?;
+    /// println!("{} root elements", table.roots.len());
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn release_tables(&self, release_id: ReleaseId) -> ReleaseTablesRequest<'_> {
+        ReleaseTablesRequest::new(self, release_id.get())
+    }
+
+    /// Run a release/tables request (invoked by [`ReleaseTablesRequest::send`]).
+    pub(crate) async fn execute_release_tables(
+        &self,
+        request: &ReleaseTablesRequest<'_>,
+    ) -> Result<ReleaseTable> {
+        self.get("/release/tables", &request.query_params()).await
+    }
+
     /// Begin a request for the tags used by the series in a release (the
     /// `fred/release/tags` endpoint) — the tag facets available when browsing a
     /// release.
@@ -927,8 +955,8 @@ struct FredErrorBody {
 mod tests {
     use super::Client;
     use crate::{
-        CategoryId, Error, Frequency, OrderBy, ReleaseId, SeasonalAdjustment, SeriesId, SortOrder,
-        SourceId, Units, UpdatesFilter,
+        CategoryId, Error, Frequency, OrderBy, ReleaseElementId, ReleaseId, SeasonalAdjustment,
+        SeriesId, SortOrder, SourceId, Units, UpdatesFilter,
     };
     use wiremock::matchers::{method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -1643,6 +1671,44 @@ mod tests {
         assert_eq!(results.count, 2);
         assert_eq!(results.release_dates[0].release_id, ReleaseId::new(82));
         assert!(results.release_dates[0].release_name.is_none());
+    }
+
+    #[tokio::test]
+    async fn release_tables_send_element_and_parse_tree() {
+        let server = MockServer::start().await;
+        // The element_id (subtree scope) must reach the wire, and the nested
+        // tree — a section containing a series row — must deserialize.
+        Mock::given(method("GET"))
+            .and(path("/release/tables"))
+            .and(query_param("release_id", "10"))
+            .and(query_param("element_id", "34483"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"name":"Monthly, SA","element_id":34483,"release_id":"10","elements":{
+                    "34484":{"element_id":34484,"release_id":10,"parent_id":34483,
+                        "series_id":"","type":"series","name":"All items","line":"1","level":"0",
+                        "children":[
+                            {"element_id":34485,"release_id":10,"parent_id":34484,
+                             "series_id":"CPIFABSL","type":"series","name":"Food",
+                             "line":"2","level":"1","children":[]}
+                        ]}
+                }}"#,
+            ))
+            .mount(&server)
+            .await;
+
+        let table = client_for(&server)
+            .release_tables(ReleaseId::new(10))
+            .element(ReleaseElementId::new(34483))
+            .send()
+            .await
+            .expect("release/tables parse");
+        assert_eq!(table.name.as_deref(), Some("Monthly, SA"));
+        assert_eq!(table.roots.len(), 1);
+        let leaf = &table.roots[0].children[0];
+        assert_eq!(
+            leaf.series_id.as_ref().map(|s| s.as_str()),
+            Some("CPIFABSL")
+        );
     }
 
     #[tokio::test]

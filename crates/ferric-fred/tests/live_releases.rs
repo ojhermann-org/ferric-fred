@@ -70,3 +70,29 @@ async fn release_dates_all_and_single() {
         .iter()
         .all(|d| d.release_id == ReleaseId::new(53)));
 }
+
+#[tokio::test]
+#[ignore = "hits the live FRED API; requires FRED_API_KEY"]
+async fn release_tables_tree_and_subtree() {
+    let client = Client::from_env().expect("FRED_API_KEY set");
+
+    // 10 = the Consumer Price Index release, which has a table tree.
+    let table = client
+        .release_tables(ReleaseId::new(10))
+        .send()
+        .await
+        .expect("release/tables");
+    assert!(!table.roots.is_empty());
+    assert!(table.roots.iter().all(|element| !element.name.is_empty()));
+
+    // Drilling into a root by element_id returns that subtree, now naming the
+    // requested element.
+    let root_id = table.roots[0].element_id;
+    let subtree = client
+        .release_tables(ReleaseId::new(10))
+        .element(root_id)
+        .send()
+        .await
+        .expect("release/tables subtree");
+    assert_eq!(subtree.element_id, Some(root_id));
+}

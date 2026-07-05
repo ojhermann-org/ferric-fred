@@ -30,9 +30,9 @@ Early construction. The library covers the `series` endpoints (`series`,
 `category/children`, `category/related`, `category/series`, `category/tags`,
 `category/related_tags`),
 `release` (`releases`, `releases/dates`, `release`, `release/series`,
-`release/sources`, `release/dates`, `release/tags`, `release/related_tags`),
-`source` (`sources`, `source`, `source/releases`), and `tag` (`tags`,
-`related_tags`, `tags/series`);
+`release/sources`, `release/dates`, `release/tags`, `release/related_tags`,
+`release/tables`), `source` (`sources`, `source`, `source/releases`), and `tag`
+(`tags`, `related_tags`, `tags/series`) — i.e. all of FRED's read endpoints;
 the `fred` CLI (this repo's first consumer) can search, show series metadata,
 print observations, chart them in an interactive terminal UI, browse the
 category tree, releases, and sources, and filter series by tags (with

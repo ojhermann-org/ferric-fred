@@ -111,6 +111,53 @@ impl From<u32> for ReleaseId {
     }
 }
 
+/// A FRED release-table element identifier — the numeric id of a node in a
+/// release's table tree (a section, table, or series row; see
+/// `fred/release/tables`).
+///
+/// A `Copy` newtype over `u32`, mirroring [`ReleaseId`]; `#[serde(transparent)]`
+/// carries it as the bare integer FRED sends (ADR-0005). `Ord` lets the table
+/// deserializer order its roots deterministically by id.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+)]
+#[serde(transparent)]
+pub struct ReleaseElementId(u32);
+
+impl ReleaseElementId {
+    /// Wrap a numeric id as a [`ReleaseElementId`].
+    pub fn new(id: u32) -> Self {
+        Self(id)
+    }
+
+    /// The underlying numeric id.
+    pub fn get(self) -> u32 {
+        self.0
+    }
+}
+
+impl std::fmt::Display for ReleaseElementId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<u32> for ReleaseElementId {
+    fn from(id: u32) -> Self {
+        Self(id)
+    }
+}
+
 /// A FRED source identifier — the numeric id of a data source (the organization
 /// that produces a release, e.g. the Bureau of Economic Analysis).
 ///

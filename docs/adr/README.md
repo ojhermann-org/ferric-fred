@@ -25,7 +25,7 @@ use them, and [`0000-adr-template.md`](0000-adr-template.md) for the template.
 | [0014](0014-pre-commit-secret-guard.md) | Pre-commit secret guard | Accepted |
 | [0015](0015-cli-binary-naming.md) | CLI & server binary names | Accepted |
 | [0016](0016-ci-live-tests-machine-identity.md) | CI live tests via an Infisical machine identity | Accepted |
-| [0017](0017-release-tables-tree.md) | Modelling `release/tables` (the recursive table tree) | Proposed |
+| [0017](0017-release-tables-tree.md) | Modelling `release/tables` (the recursive table tree) | Accepted |
 
 ## Backlog (proposed, not yet written)
 
@@ -34,5 +34,5 @@ Order and contents will change as we build.
 
 _Currently empty — the foundational decisions are all recorded. The
 `release/tables` recursive shape, once a backlog example, is now
-[ADR-0017](0017-release-tables-tree.md) (Proposed). New entries land here as they
+[ADR-0017](0017-release-tables-tree.md) (Accepted). New entries land here as they
 surface._
