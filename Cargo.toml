@@ -5,9 +5,11 @@ members = ["crates/ferric-fred", "crates/ferric-fred-cli", "crates/ferric-fred-m
 # Shared metadata, dependency versions, and lints, inherited by every member
 # crate via `field.workspace = true` (see ADR-0002).
 [workspace.package]
-version = "0.0.0"
+# No shared `version`: each crate carries its own (independent semver, driven by
+# release-plz from Conventional Commits — ADR-0012).
 edition = "2021"
 license = "MIT OR Apache-2.0"
+repository = "https://github.com/ojhermann-org/ferric-fred"
 
 [workspace.dependencies]
 # Async HTTP on rustls — no system OpenSSL dependency (ADR-0003). We own

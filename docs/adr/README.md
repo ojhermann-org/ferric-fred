@@ -26,6 +26,7 @@ use them, and [`0000-adr-template.md`](0000-adr-template.md) for the template.
 | [0015](0015-cli-binary-naming.md) | CLI & server binary names | Accepted |
 | [0016](0016-ci-live-tests-machine-identity.md) | CI live tests via an Infisical machine identity | Accepted |
 | [0017](0017-release-tables-tree.md) | Modelling `release/tables` (the recursive table tree) | Accepted |
+| [0018](0018-release-secret-via-infisical.md) | Route the crates.io token through Infisical | Accepted |
 
 ## Backlog (proposed, not yet written)
 
