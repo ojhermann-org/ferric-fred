@@ -293,6 +293,24 @@ impl Client {
         )
     }
 
+    /// Fetch the sources for a release (the `fred/release/sources` endpoint) —
+    /// the reverse of [`source_releases`](Client::source_releases). FRED returns
+    /// the full list unpaginated, so this yields a plain `Vec<Source>`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails to send, FRED returns a non-success
+    /// status, or the response body cannot be deserialized.
+    pub async fn release_sources(&self, release_id: ReleaseId) -> Result<Vec<Source>> {
+        let response: SourceResponse = self
+            .get(
+                "/release/sources",
+                &[("release_id", release_id.get().to_string())],
+            )
+            .await?;
+        Ok(response.sources)
+    }
+
     /// Begin a request to browse or search FRED's tag vocabulary (the
     /// `fred/tags` endpoint).
     ///
@@ -643,8 +661,9 @@ struct ReleaseResponse {
     releases: Vec<Release>,
 }
 
-/// The single-`source` response envelope (the `sources` list endpoint
-/// deserializes into [`SourcesResults`] directly).
+/// The `source` / `release/sources` response envelope: a bare `sources` array
+/// (the paginated `sources` list endpoint deserializes into [`SourcesResults`]
+/// directly; `release/sources` is unpaginated, so it uses this).
 #[derive(Deserialize)]
 struct SourceResponse {
     sources: Vec<Source>,
@@ -1142,6 +1161,33 @@ mod tests {
             .expect("source/releases parse");
         assert_eq!(results.count, 1);
         assert_eq!(results.releases[0].id, ReleaseId::new(53));
+    }
+
+    #[tokio::test]
+    async fn release_sources_send_release_id_and_parse() {
+        let server = MockServer::start().await;
+        // The release_id reaches `/release/sources`, which returns a bare
+        // (unpaginated) `sources` array wrapped alongside realtime fields.
+        Mock::given(method("GET"))
+            .and(path("/release/sources"))
+            .and(query_param("release_id", "51"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"realtime_start":"2013-08-14","realtime_end":"2013-08-14","sources":[
+                    {"id":18,"name":"U.S. Bureau of Economic Analysis","link":"http://www.bea.gov/"},
+                    {"id":19,"name":"U.S. Census Bureau"}
+                ]}"#,
+            ))
+            .mount(&server)
+            .await;
+
+        let sources = client_for(&server)
+            .release_sources(ReleaseId::new(51))
+            .await
+            .expect("release/sources parse");
+        assert_eq!(sources.len(), 2);
+        assert_eq!(sources[0].id, SourceId::new(18));
+        assert_eq!(sources[0].link.as_deref(), Some("http://www.bea.gov/"));
+        assert!(sources[1].link.is_none());
     }
 
     #[tokio::test]

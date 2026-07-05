@@ -29,4 +29,12 @@ async fn releases_list_and_single_and_series() {
         .await
         .expect("release 53 series");
     assert!(series.count > 0);
+
+    // Its sources (unpaginated) — GDP is produced by at least one source.
+    let sources = client
+        .release_sources(ReleaseId::new(53))
+        .await
+        .expect("release 53 sources");
+    assert!(!sources.is_empty());
+    assert!(sources.iter().all(|source| !source.name.is_empty()));
 }
