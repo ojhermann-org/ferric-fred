@@ -30,6 +30,16 @@ README + MCP tool table; a new **feature** touches the relevant crate README(s)
 and crate-level rustdoc; a **decision** gets an ADR. If a change makes an existing
 doc wrong, fixing it is in scope for that PR — not a later one.
 
+## Repo settings are code
+
+Repo-level GitHub settings (the Actions "create/approve PRs" toggle,
+`delete_branch_on_merge`, merge methods, description, topics, …) are the source
+of truth in [`scripts/repo-settings.sh`](scripts/repo-settings.sh), per
+[ADR-0022](docs/adr/0022-repo-settings-as-code.md). **Change them by editing that
+script and running `apply` via a reviewed PR — not by hand in the GitHub UI**, or
+the drift-check (`repo-settings.sh check`) will flag it. Org-wide settings (branch
+protection, rulesets) are *not* here — they live in `ojhermann-org/github-settings`.
+
 ## Deletion & creation
 
 **Ask before deleting or substantively rewriting:**
@@ -41,6 +51,8 @@ doc wrong, fixing it is in scope for that PR — not a later one.
   (`nix flake update`, `cargo update`) — never hand-delete.
 - **Tracked env config (`.envrc.shared`, `.envrc.example`).** Changing how
   secrets load affects everyone — confirm first.
+- **`scripts/repo-settings.sh`.** The source of truth for repo-level GitHub
+  settings (ADR-0022) — edit desired values deliberately; don't gut it.
 - **`flake.nix`, `README.md`.**
 
 **Never:**
