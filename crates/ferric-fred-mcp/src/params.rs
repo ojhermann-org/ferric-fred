@@ -1,9 +1,12 @@
 //! MCP-facing tool-input enums: `Deserialize` + `JsonSchema` mirrors of the
 //! library's request enums, each converting into its `ferric_fred` counterpart.
 //!
-//! Deriving these here rather than on the library types keeps `schemars` out of
-//! the library (ADR-0010). The `rename_all` attributes make the generated tool
-//! schemas advertise FRED's own value codes.
+//! These are MCP-facing *input* enums, so they live in the MCP crate regardless
+//! (the library models FRED's returned values, not its request codes). The
+//! `rename_all` attributes make the generated tool schemas advertise FRED's own
+//! value codes. The library return types derive `JsonSchema` too, but only
+//! behind its optional, default-off `schemars` feature, for tool *output*
+//! schemas (ADR-0023) — plain library consumers still pay nothing.
 
 use ferric_fred::{AggregationMethod, Frequency, OrderBy, SortOrder, Units, UpdatesFilter};
 use schemars::JsonSchema;

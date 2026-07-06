@@ -5,6 +5,7 @@ use crate::CategoryId;
 /// A node in the FRED category tree (the `fred/category` and
 /// `fred/category/children` endpoints).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Category {
     /// The category's identifier.
     pub id: CategoryId,

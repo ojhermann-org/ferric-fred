@@ -5,6 +5,7 @@ use crate::ReleaseId;
 /// A FRED data release — a publication such as "Gross Domestic Product", from
 /// the `fred/release` and `fred/releases` endpoints.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Release {
     /// The release's identifier.
     pub id: ReleaseId,
@@ -23,6 +24,7 @@ pub struct Release {
 /// A page of releases with pagination metadata, from the `fred/releases`
 /// endpoint.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ReleasesResults {
     /// Total number of releases available (across all pages).
     pub count: u32,

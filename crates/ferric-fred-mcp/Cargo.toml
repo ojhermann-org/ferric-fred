@@ -14,16 +14,19 @@ name = "fred-mcp"
 path = "src/main.rs"
 
 [dependencies]
-# The library, by workspace path (+ version for publishing), per ADR-0002.
-ferric-fred = { path = "../ferric-fred", version = "0.3.2" }
+# The library, by workspace path (+ version for publishing), per ADR-0002. Its
+# `schemars` feature is enabled here so the tool return types carry `JsonSchema`
+# and each tool can advertise an output schema (ADR-0023).
+ferric-fred = { path = "../ferric-fred", version = "0.3.2", features = ["schemars"] }
 anyhow = { workspace = true }
 chrono = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "io-std"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 rmcp = { version = "2.1.0", features = ["transport-io", "schemars"] }
-# For deriving JsonSchema on tool input structs; version tracks rmcp's schemars.
-schemars = "1"
+# For deriving JsonSchema on tool input structs, and building tool output schemas
+# from the library return types; version tracks rmcp's schemars.
+schemars = { workspace = true }
 
 [lints]
 workspace = true

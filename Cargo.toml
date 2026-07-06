@@ -26,6 +26,11 @@ tokio = { version = "1", default-features = false }
 # public signature, and the generator macro that implements it.
 futures-core = { version = "0.3", default-features = false }
 async-stream = "0.3"
+# JSON Schema generation (ADR-0023). The MCP crate derives it on its tool input
+# structs; the library turns it on — feature-gated, default-off — to derive
+# output schemas on its domain types. Members opt into the `chrono04` integration
+# (for the `NaiveDate` fields) where they need it.
+schemars = { version = "1" }
 
 # Binary-only (the CLI): ergonomic error context (ADR-0004), arg parsing, and
 # the terminal-UI toolkit for `fred chart`.

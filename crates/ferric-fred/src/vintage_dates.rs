@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 /// A vintage date is a date on which the series' data were revised or new
 /// observations were released — the series "as it looked" on that date.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct VintageDates {
     /// Total number of vintage dates available (across all pages).
     pub count: u32,

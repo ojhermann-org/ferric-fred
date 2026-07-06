@@ -11,7 +11,10 @@ to MCP-capable clients over stdio, built on the
 
 It provides **31 tools** covering all of FRED's read endpoints — searching and
 inspecting series, fetching observations, and browsing categories, releases,
-sources, and tags. Tool results are returned as JSON (MCP structured content).
+sources, and tags. Tool results are returned as JSON (MCP structured content),
+and every tool declares an input **and output** schema plus behavioural
+annotations (read-only, idempotent, non-destructive, open-world), so a client
+knows a call's shape and effects before making it.
 
 ## Install
 

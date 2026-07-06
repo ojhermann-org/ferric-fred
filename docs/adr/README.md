@@ -31,6 +31,7 @@ use them, and [`0000-adr-template.md`](0000-adr-template.md) for the template.
 | [0020](0020-auto-pagination.md) | Auto-pagination (`Paginate` trait + `send_all`) | Accepted |
 | [0021](0021-streaming-pagination.md) | Streaming pagination (`Paginate::stream`) | Accepted |
 | [0022](0022-repo-settings-as-code.md) | Repo-level GitHub settings as code | Accepted |
+| [0023](0023-mcp-output-schemas.md) | MCP tool output schemas via a feature-gated `schemars` derive | Accepted |
 
 ## Backlog (proposed, not yet written)
 

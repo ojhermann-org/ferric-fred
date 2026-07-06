@@ -107,6 +107,20 @@ impl Serialize for Frequency {
     }
 }
 
+// A `Frequency` is carried on the wire as its long-form label (see `Serialize`),
+// so its JSON Schema is simply that of a string. The custom serde impls rule out
+// deriving `JsonSchema`, so mirror them by hand.
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for Frequency {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "Frequency".into()
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <String as schemars::JsonSchema>::json_schema(generator)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

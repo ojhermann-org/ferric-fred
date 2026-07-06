@@ -19,10 +19,18 @@
 //! `get_series_search_related_tags`) — one per library endpoint, with typed
 //! inputs (see [`params`]).
 //!
+//! Each tool advertises an **output schema** as well as its input schema: the
+//! shape of the structured JSON it returns, derived from the library return type
+//! via `ferric-fred`'s `schemars` feature (or, for the few list-envelope tools,
+//! from a local [`output`] struct). See ADR-0023.
+//!
 //! Note: over stdio, **stdout is the protocol channel** — nothing may be printed
 //! to it. Any diagnostics must go to stderr.
 
+mod output;
 mod params;
+
+use std::sync::Arc;
 
 use anyhow::Context;
 use chrono::{NaiveDate, NaiveDateTime};
@@ -31,9 +39,12 @@ use ferric_fred::{
 };
 use rmcp::handler::server::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
-use rmcp::model::{CallToolResult, ContentBlock, Implementation, ServerCapabilities, ServerInfo};
+use rmcp::model::{
+    CallToolResult, ContentBlock, Implementation, JsonObject, ServerCapabilities, ServerInfo,
+};
 use rmcp::transport::stdio;
 use rmcp::{tool, tool_handler, tool_router, ErrorData, ServerHandler, ServiceExt};
+use schemars::generate::SchemaSettings;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -376,7 +387,8 @@ impl FredServer {
             destructive_hint = false,
             idempotent_hint = true,
             open_world_hint = true
-        )
+        ),
+        output_schema = output_schema_of::<ferric_fred::Series>()
     )]
     async fn get_series(
         &self,
@@ -406,7 +418,8 @@ impl FredServer {
             destructive_hint = false,
             idempotent_hint = true,
             open_world_hint = true
-        )
+        ),
+        output_schema = output_schema_of::<ferric_fred::SeriesSearchResults>()
     )]
     async fn search_series(
         &self,
@@ -445,7 +458,8 @@ impl FredServer {
             destructive_hint = false,
             idempotent_hint = true,
             open_world_hint = true
-        )
+        ),
+        output_schema = output_schema_of::<output::ObservationsOutput>()
     )]
     async fn get_observations(
         &self,
@@ -478,11 +492,13 @@ impl FredServer {
 
         match request.send().await {
             Ok(observations) => {
-                let value = serde_json::json!({
-                    "series_id": params.series_id,
-                    "count": observations.len(),
-                    "observations": observations,
-                });
+                let output = output::ObservationsOutput {
+                    series_id: params.series_id,
+                    count: observations.len(),
+                    observations,
+                };
+                let value = serde_json::to_value(&output)
+                    .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
                 Ok(CallToolResult::structured(value))
             }
             Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(
@@ -502,7 +518,8 @@ impl FredServer {
             destructive_hint = false,
             idempotent_hint = true,
             open_world_hint = true
-        )
+        ),
+        output_schema = output_schema_of::<ferric_fred::SeriesSearchResults>()
     )]
     async fn get_series_updates(
         &self,
@@ -555,7 +572,8 @@ impl FredServer {
             destructive_hint = false,
             idempotent_hint = true,
             open_world_hint = true
-        )
+        ),
+        output_schema = output_schema_of::<ferric_fred::VintageDates>()
     )]
     async fn get_series_vintagedates(
         &self,
@@ -592,7 +610,8 @@ impl FredServer {
             destructive_hint = false,
             idempotent_hint = true,
             open_world_hint = true
-        )
+        ),
+        output_schema = output_schema_of::<ferric_fred::Category>()
     )]
     async fn get_category(
         &self,
@@ -623,7 +642,8 @@ impl FredServer {
             destructive_hint = false,
             idempotent_hint = true,
             open_world_hint = true
-        )
+        ),
+        output_schema = output_schema_of::<output::CategoryChildrenOutput>()
     )]
     async fn get_category_children(
         &self,
@@ -635,11 +655,13 @@ impl FredServer {
             .await
         {
             Ok(children) => {
-                let value = serde_json::json!({
-                    "category_id": params.category_id,
-                    "count": children.len(),
-                    "children": children,
-                });
+                let output = output::CategoryChildrenOutput {
+                    category_id: params.category_id,
+                    count: children.len(),
+                    children,
+                };
+                let value = serde_json::to_value(&output)
+                    .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
                 Ok(CallToolResult::structured(value))
             }
             Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(
@@ -658,7 +680,8 @@ impl FredServer {
             destructive_hint = false,
             idempotent_hint = true,
             open_world_hint = true
-        )
+        ),
+        output_schema = output_schema_of::<output::CategoryRelatedOutput>()
     )]
     async fn get_category_related(
         &self,
@@ -670,11 +693,13 @@ impl FredServer {
             .await
         {
             Ok(related) => {
-                let value = serde_json::json!({
-                    "category_id": params.category_id,
-                    "count": related.len(),
-                    "related": related,
-                });
+                let output = output::CategoryRelatedOutput {
+                    category_id: params.category_id,
+                    count: related.len(),
+                    related,
+                };
+                let value = serde_json::to_value(&output)
+                    .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
                 Ok(CallToolResult::structured(value))
             }
             Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(
@@ -693,7 +718,8 @@ impl FredServer {
             destructive_hint = false,
             idempotent_hint = true,
             open_world_hint = true
-        )
+        ),
+        output_schema = output_schema_of::<ferric_fred::SeriesSearchResults>()
     )]
     async fn get_category_series(
         &self,
@@ -734,7 +760,8 @@ impl FredServer {
             destructive_hint = false,
             idempotent_hint = true,
             open_world_hint = true
-        )
+        ),
+        output_schema = output_schema_of::<ferric_fred::ReleasesResults>()
     )]
     async fn get_releases(
         &self,
@@ -769,7 +796,8 @@ impl FredServer {
             destructive_hint = false,
             idempotent_hint = true,
             open_world_hint = true
-        )
+        ),
+        output_schema = output_schema_of::<ferric_fred::Release>()
     )]
     async fn get_release(
         &self,
@@ -797,7 +825,8 @@ impl FredServer {
             destructive_hint = false,
             idempotent_hint = true,
             open_world_hint = true
-        )
+        ),
+        output_schema = output_schema_of::<ferric_fred::SeriesSearchResults>()
     )]
     async fn get_release_series(
         &self,
@@ -838,7 +867,8 @@ impl FredServer {
             destructive_hint = false,
             idempotent_hint = true,
             open_world_hint = true
-        )
+        ),
+        output_schema = output_schema_of::<output::ReleaseSourcesOutput>()
     )]
     async fn get_release_sources(
         &self,
@@ -850,10 +880,12 @@ impl FredServer {
             .await
         {
             Ok(sources) => {
-                let value = serde_json::json!({
-                    "count": sources.len(),
-                    "sources": sources,
-                });
+                let output = output::ReleaseSourcesOutput {
+                    count: sources.len(),
+                    sources,
+                };
+                let value = serde_json::to_value(&output)
+                    .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
                 Ok(CallToolResult::structured(value))
             }
             Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(
@@ -873,7 +905,8 @@ impl FredServer {
             destructive_hint = false,
             idempotent_hint = true,
             open_world_hint = true
-        )
+        ),
+        output_schema = output_schema_of::<ferric_fred::ReleaseDatesResults>()
     )]
     async fn get_releases_dates(
         &self,
@@ -913,7 +946,8 @@ impl FredServer {
             destructive_hint = false,
             idempotent_hint = true,
             open_world_hint = true
-        )
+        ),
+        output_schema = output_schema_of::<ferric_fred::ReleaseDatesResults>()
     )]
     async fn get_release_dates(
         &self,
@@ -953,7 +987,8 @@ impl FredServer {
             destructive_hint = false,
             idempotent_hint = true,
             open_world_hint = true
-        )
+        ),
+        output_schema = output_schema_of::<ferric_fred::ReleaseTable>()
     )]
     async fn get_release_tables(
         &self,
@@ -988,7 +1023,8 @@ impl FredServer {
             destructive_hint = false,
             idempotent_hint = true,
             open_world_hint = true
-        )
+        ),
+        output_schema = output_schema_of::<ferric_fred::SourcesResults>()
     )]
     async fn get_sources(
         &self,
@@ -1023,7 +1059,8 @@ impl FredServer {
             destructive_hint = false,
             idempotent_hint = true,
             open_world_hint = true
-        )
+        ),
+        output_schema = output_schema_of::<ferric_fred::Source>()
     )]
     async fn get_source(
         &self,
@@ -1050,7 +1087,8 @@ impl FredServer {
             destructive_hint = false,
             idempotent_hint = true,
             open_world_hint = true
-        )
+        ),
+        output_schema = output_schema_of::<ferric_fred::ReleasesResults>()
     )]
     async fn get_source_releases(
         &self,
@@ -1086,7 +1124,8 @@ impl FredServer {
             destructive_hint = false,
             idempotent_hint = true,
             open_world_hint = true
-        )
+        ),
+        output_schema = output_schema_of::<ferric_fred::TagsResults>()
     )]
     async fn get_tags(
         &self,
@@ -1125,7 +1164,8 @@ impl FredServer {
             destructive_hint = false,
             idempotent_hint = true,
             open_world_hint = true
-        )
+        ),
+        output_schema = output_schema_of::<ferric_fred::TagsResults>()
     )]
     async fn get_related_tags(
         &self,
@@ -1164,7 +1204,8 @@ impl FredServer {
             destructive_hint = false,
             idempotent_hint = true,
             open_world_hint = true
-        )
+        ),
+        output_schema = output_schema_of::<ferric_fred::SeriesSearchResults>()
     )]
     async fn get_tags_series(
         &self,
@@ -1202,7 +1243,8 @@ impl FredServer {
             destructive_hint = false,
             idempotent_hint = true,
             open_world_hint = true
-        )
+        ),
+        output_schema = output_schema_of::<ferric_fred::TagsResults>()
     )]
     async fn get_series_tags(
         &self,
@@ -1234,7 +1276,8 @@ impl FredServer {
             destructive_hint = false,
             idempotent_hint = true,
             open_world_hint = true
-        )
+        ),
+        output_schema = output_schema_of::<ferric_fred::TagsResults>()
     )]
     async fn get_category_tags(
         &self,
@@ -1265,7 +1308,8 @@ impl FredServer {
             destructive_hint = false,
             idempotent_hint = true,
             open_world_hint = true
-        )
+        ),
+        output_schema = output_schema_of::<ferric_fred::TagsResults>()
     )]
     async fn get_category_related_tags(
         &self,
@@ -1296,7 +1340,8 @@ impl FredServer {
             destructive_hint = false,
             idempotent_hint = true,
             open_world_hint = true
-        )
+        ),
+        output_schema = output_schema_of::<ferric_fred::TagsResults>()
     )]
     async fn get_release_tags(
         &self,
@@ -1325,7 +1370,8 @@ impl FredServer {
             destructive_hint = false,
             idempotent_hint = true,
             open_world_hint = true
-        )
+        ),
+        output_schema = output_schema_of::<ferric_fred::TagsResults>()
     )]
     async fn get_release_related_tags(
         &self,
@@ -1356,7 +1402,8 @@ impl FredServer {
             destructive_hint = false,
             idempotent_hint = true,
             open_world_hint = true
-        )
+        ),
+        output_schema = output_schema_of::<ferric_fred::TagsResults>()
     )]
     async fn get_series_search_tags(
         &self,
@@ -1385,7 +1432,8 @@ impl FredServer {
             destructive_hint = false,
             idempotent_hint = true,
             open_world_hint = true
-        )
+        ),
+        output_schema = output_schema_of::<ferric_fred::TagsResults>()
     )]
     async fn get_series_search_related_tags(
         &self,
@@ -1415,7 +1463,8 @@ impl FredServer {
             destructive_hint = false,
             idempotent_hint = true,
             open_world_hint = true
-        )
+        ),
+        output_schema = output_schema_of::<output::SeriesCategoriesOutput>()
     )]
     async fn get_series_categories(
         &self,
@@ -1427,10 +1476,12 @@ impl FredServer {
             .await
         {
             Ok(categories) => {
-                let value = serde_json::json!({
-                    "count": categories.len(),
-                    "categories": categories,
-                });
+                let output = output::SeriesCategoriesOutput {
+                    count: categories.len(),
+                    categories,
+                };
+                let value = serde_json::to_value(&output)
+                    .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
                 Ok(CallToolResult::structured(value))
             }
             Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(
@@ -1448,7 +1499,8 @@ impl FredServer {
             destructive_hint = false,
             idempotent_hint = true,
             open_world_hint = true
-        )
+        ),
+        output_schema = output_schema_of::<ferric_fred::Release>()
     )]
     async fn get_series_release(
         &self,
@@ -1469,6 +1521,29 @@ impl FredServer {
             )])),
         }
     }
+}
+
+/// Build a tool's `outputSchema` from the type it structurally returns.
+///
+/// Mirrors rmcp's own output-schema derivation — JSON Schema draft 2020-12, with
+/// the top-level `title`/`description` (the Rust type name and its doc) stripped
+/// as noise — but generates under the **serialize** contract. That matters for
+/// the two library types with split serde renames (`SeriesSearchResults`'
+/// `series`/`seriess` and `ReleaseTable`'s `roots`/`elements`): the serialize
+/// contract makes the schema describe the JSON a tool actually emits, not the
+/// FRED payload it parses. See ADR-0023.
+fn output_schema_of<T: JsonSchema>() -> Arc<JsonObject> {
+    let generator = SchemaSettings::draft2020_12()
+        .for_serialize()
+        .into_generator();
+    let schema = generator.into_root_schema_for::<T>();
+    let value = serde_json::to_value(schema).expect("a JSON Schema serializes to a JSON value");
+    let serde_json::Value::Object(mut object) = value else {
+        unreachable!("a JSON Schema is always a JSON object");
+    };
+    object.remove("title");
+    object.remove("description");
+    Arc::new(object)
 }
 
 /// Send a scoped tags request and wrap the outcome the way every tool does:
@@ -1585,6 +1660,56 @@ mod tests {
             "the server must advertise the tools capability"
         );
         assert_eq!(info.server_info.name, "ferric-fred-mcp");
+    }
+
+    #[test]
+    fn every_tool_advertises_an_object_output_schema() {
+        let tools = FredServer::tool_router().list_all();
+        assert_eq!(tools.len(), 31, "expected all 31 tools to be registered");
+        for tool in &tools {
+            let schema = tool
+                .output_schema
+                .as_ref()
+                .unwrap_or_else(|| panic!("tool `{}` is missing an output schema", tool.name));
+            assert_eq!(
+                schema.get("type").and_then(|t| t.as_str()),
+                Some("object"),
+                "tool `{}` output schema must have root type object",
+                tool.name
+            );
+        }
+    }
+
+    #[test]
+    fn output_schemas_describe_the_serialized_shape() {
+        // The library reads FRED's `seriess`/`elements` keys but re-serializes as
+        // `series`/`roots`; the output schema (serialize contract) must advertise
+        // the emitted names, not the parsed ones. Guards output_schema_of's use of
+        // `.for_serialize()`.
+        let tools = FredServer::tool_router().list_all();
+        let props_of = |name: &str| -> serde_json::Value {
+            let tool = tools
+                .iter()
+                .find(|t| t.name == name)
+                .unwrap_or_else(|| panic!("tool `{name}` not found"));
+            serde_json::Value::Object((**tool.output_schema.as_ref().unwrap()).clone())
+                ["properties"]
+                .clone()
+        };
+
+        let search = props_of("search_series");
+        assert!(search.get("series").is_some(), "expected `series` property");
+        assert!(
+            search.get("seriess").is_none(),
+            "must not leak FRED's `seriess` deserialize key"
+        );
+
+        let tables = props_of("get_release_tables");
+        assert!(tables.get("roots").is_some(), "expected `roots` property");
+        assert!(
+            tables.get("elements").is_none(),
+            "must not leak FRED's `elements` deserialize key"
+        );
     }
 
     #[test]

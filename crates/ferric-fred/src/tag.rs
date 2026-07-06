@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// Tags are identified by [`name`](Tag::name); there is no numeric id.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Tag {
     /// The tag's name, e.g. `"gdp"`.
     pub name: String,
@@ -27,6 +28,7 @@ pub struct Tag {
 /// A page of tags with pagination metadata, from the `fred/tags` and
 /// `fred/series/tags` endpoints.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TagsResults {
     /// Total number of tags available (across all pages).
     pub count: u32,

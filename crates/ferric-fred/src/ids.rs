@@ -5,6 +5,7 @@
 /// no validation for now — FRED rejects malformed ids — but the newtype gives
 /// us a place to add it later without changing call sites.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct SeriesId(String);
 
 impl SeriesId {
@@ -47,6 +48,7 @@ impl From<String> for SeriesId {
     Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
 )]
 #[serde(transparent)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct CategoryId(u32);
 
 impl CategoryId {
@@ -85,6 +87,7 @@ impl From<u32> for CategoryId {
     Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
 )]
 #[serde(transparent)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ReleaseId(u32);
 
 impl ReleaseId {
@@ -132,6 +135,7 @@ impl From<u32> for ReleaseId {
     serde::Deserialize,
 )]
 #[serde(transparent)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ReleaseElementId(u32);
 
 impl ReleaseElementId {
@@ -167,6 +171,7 @@ impl From<u32> for ReleaseElementId {
     Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
 )]
 #[serde(transparent)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct SourceId(u32);
 
 impl SourceId {

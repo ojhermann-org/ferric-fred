@@ -6,6 +6,7 @@ use crate::SourceId;
 /// Bureau of Economic Analysis), from the `fred/source` and `fred/sources`
 /// endpoints.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Source {
     /// The source's identifier.
     pub id: SourceId,
@@ -21,6 +22,7 @@ pub struct Source {
 /// A page of sources with pagination metadata, from the `fred/sources`
 /// endpoint.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct SourcesResults {
     /// Total number of sources available (across all pages).
     pub count: u32,

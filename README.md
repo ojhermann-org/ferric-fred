@@ -54,7 +54,9 @@ Pick an entry point:
   or `fred <command> --help`.
 - **MCP server** (`fred-mcp`) — `cargo install ferric-fred-mcp`; **31 tools** over
   stdio covering the same read surface, for MCP-capable clients ([ADR-0010](docs/adr/0010-mcp-server-design.md)).
-  See the [crate README](crates/ferric-fred-mcp/README.md).
+  Each tool declares input and output schemas plus behavioural annotations
+  ([ADR-0023](docs/adr/0023-mcp-output-schemas.md)). See the
+  [crate README](crates/ferric-fred-mcp/README.md).
 
 The MCP server is listed and scored on
 [Glama](https://glama.ai/mcp/servers/ojhermann-org/ferric-fred):
