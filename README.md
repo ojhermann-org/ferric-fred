@@ -1,231 +1,95 @@
 # ferric-fred
 
+[![CI](https://github.com/ojhermann-org/ferric-fred/actions/workflows/ci.yml/badge.svg)](https://github.com/ojhermann-org/ferric-fred/actions/workflows/ci.yml)
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
+[![ferric-fred MCP server](https://glama.ai/mcp/servers/ojhermann-org/ferric-fred/badges/score.svg)](https://glama.ai/mcp/servers/ojhermann-org/ferric-fred)
+
 A strongly-typed Rust client for [FRED](https://fred.stlouisfed.org/) — the
 Federal Reserve Economic Data service from the Federal Reserve Bank of St. Louis
 — plus a CLI (with TUI charts) and an MCP server built on top of it.
 
 > `ferric` (iron oxide → *rust*) + `FRED`. Iron-clad, typed access to economic data.
 
-## Workspace layout
+## Workspace
 
-This is a Cargo workspace. Its three crates:
+A Cargo workspace of three crates — each with its own README (the crates.io /
+docs.rs landing page) that carries the full usage detail:
 
-| Crate | Kind | Purpose |
-|-------|------|---------|
-| `ferric-fred` | library | Strongly-typed async client for the FRED API |
-| `ferric-fred-cli` | binary | Command-line tool with `ratatui` TUI charts |
-| `ferric-fred-mcp` | binary | MCP server exposing FRED to MCP clients |
+| Crate | Binary | What it is | Details |
+|-------|--------|------------|---------|
+| `ferric-fred` | — | Strongly-typed async FRED client | [README](crates/ferric-fred/README.md) · [docs.rs](https://docs.rs/ferric-fred) |
+| `ferric-fred-cli` | `fred` | Command-line tool with `ratatui` TUI charts | [README](crates/ferric-fred-cli/README.md) |
+| `ferric-fred-mcp` | `fred-mcp` | MCP server exposing FRED to MCP clients | [README](crates/ferric-fred-mcp/README.md) |
+
+Published versions (these badges are the source of truth — the crates version
+independently, so they can drift out of lockstep):
+
+[![ferric-fred](https://img.shields.io/crates/v/ferric-fred.svg?label=ferric-fred)](https://crates.io/crates/ferric-fred)
+[![ferric-fred-cli](https://img.shields.io/crates/v/ferric-fred-cli.svg?label=ferric-fred-cli)](https://crates.io/crates/ferric-fred-cli)
+[![ferric-fred-mcp](https://img.shields.io/crates/v/ferric-fred-mcp.svg?label=ferric-fred-mcp)](https://crates.io/crates/ferric-fred-mcp)
 
 Consumers depend on the library **by workspace path**, so a breaking change in
 the library cannot compile-pass its consumers without updating them — that
-compile-time coupling is our primary "stay in sync" guarantee. Version numbers
-are managed on top of that (see the ADRs).
+compile-time coupling is the primary "stay in sync" guarantee (versions are
+managed on top; see the ADRs).
 
-## Status
+## What it covers
 
-`0.3.1` of all three crates is published to
-[crates.io](https://crates.io/crates/ferric-fred). The library covers the
-`series` endpoints (`series`,
-`series/observations`, `series/search`, `series/search/tags`,
-`series/search/related_tags`, `series/updates`, `series/vintagedates`,
-`series/categories`, `series/release`, `series/tags`), `category` (`category`,
-`category/children`, `category/related`, `category/series`, `category/tags`,
-`category/related_tags`),
-`release` (`releases`, `releases/dates`, `release`, `release/series`,
-`release/sources`, `release/dates`, `release/tags`, `release/related_tags`,
-`release/tables`), `source` (`sources`, `source`, `source/releases`), and `tag`
-(`tags`, `related_tags`, `tags/series`) — i.e. all of FRED's read endpoints;
-the `fred` CLI (this repo's first consumer) can search, show series metadata,
-print observations, chart them in an interactive terminal UI, browse the
-category tree, releases, and sources, and filter series by tags (with
-related-tag discovery). The `fred-mcp` server (ADR-0010) speaks MCP over stdio
-with the corresponding tools. Paginated endpoints can be walked to exhaustion or
-streamed lazily — `Paginate::send_all` / `Paginate::stream` in the library
-(ADR-0020, ADR-0021), and `--all` on the CLI.
+The library wraps **all of FRED's read endpoints** — series and observations,
+search, categories, releases (including the nested release-table tree), sources,
+and tags — behind ergonomic builders, with newtype identifiers, typed enums for
+FRED's closed value sets, a non-panicking error taxonomy, and **auto-pagination**
+(`Paginate::send_all` walks an endpoint to exhaustion, `Paginate::stream` yields
+lazily; `--all` on the CLI). See [ADR-0020](docs/adr/0020-auto-pagination.md) and
+[ADR-0021](docs/adr/0021-streaming-pagination.md).
 
-## Using the CLI
+Pick an entry point:
 
-The `fred` binary reads `FRED_API_KEY` from the environment (see [Secrets](#secrets)):
+- **Library** — `cargo add ferric-fred`; typed async access from your own code.
+  See the [crate README](crates/ferric-fred/README.md) and
+  [docs.rs](https://docs.rs/ferric-fred).
+- **CLI** (`fred`) — `cargo install ferric-fred-cli`; search, show metadata,
+  print or **chart** observations in the terminal, and browse categories,
+  releases, sources, and tags. See the [crate README](crates/ferric-fred-cli/README.md)
+  or `fred <command> --help`.
+- **MCP server** (`fred-mcp`) — `cargo install ferric-fred-mcp`; **31 tools** over
+  stdio covering the same read surface, for MCP-capable clients ([ADR-0010](docs/adr/0010-mcp-server-design.md)).
+  See the [crate README](crates/ferric-fred-mcp/README.md).
 
-```sh
-fred search "unemployment rate" --order-by popularity --limit 3  # find series by text
-fred search "unemployment rate" --tags --limit 5                 # tag facets of a search
-fred search "unemployment rate" --related-tags monthly --limit 5 # related tags within a search
-fred series GNPCA                                                 # show one series' metadata
-fred observations GDP --units pch --sort desc --limit 4          # transformed observations
-fred observations GDP --frequency annual --aggregation avg       # aggregate to a lower frequency
-fred chart GNPCA --start 1950-01-01                              # interactive terminal chart
-fred category                                                    # browse the category tree (root)
-fred category 13                                                 # a category and its children
-fred category 32073 --related                                   # categories related to one
-fred category 125 --series --limit 5                            # series in a category
-fred category 125 --tags --limit 5                             # tags used by a category's series
-fred category 125 --related-tags trade --limit 5              # tags co-occurring with a seed, in a category
-fred release                                                     # list all data releases
-fred release 53                                                  # a release's metadata
-fred release 53 --series --limit 5                              # series in a release
-fred release 53 --sources                                       # sources a release draws from
-fred release --dates --limit 5                                  # release calendar (all releases)
-fred release 53 --dates                                         # one release's publication dates
-fred release 53 --tags --limit 5                               # tags used by a release's series
-fred release 10 --tables                                        # a release's table tree (indented)
-fred release 10 --tables --element 34483                        # just one subtree of the tree
-fred source                                                     # list all data sources
-fred source 18                                                  # a source's metadata
-fred source 18 --releases --limit 5                            # releases produced by a source
-fred updates --filter macro --limit 10                          # recently updated series
-fred updates --start-time 2024-03-01T00:00 --end-time 2024-03-08T00:00  # updated within a time window
-fred tags --search-text quarterly --limit 5                     # browse/search the tag vocabulary
-fred tags gdp quarterly --limit 5                               # series carrying all these tags
-fred tags gdp --related --limit 5                               # tags that co-occur with gdp
-fred source --all                                              # every page of a list, not just the first
-fred series GNPCA --tags                                         # a series' own tags
-fred series GNPCA --categories                                   # the categories a series is in
-fred series GNPCA --release                                      # the release a series belongs to
-fred series GNPCA --vintages                                      # the dates a series was revised
-fred series GNPCA --json | jq .frequency                        # JSON output for scripting
-```
-
-Add `--json` to any data command (`search`, `series`, `observations`) for
-machine-readable output — each emits its domain type as JSON (`chart` ignores
-it). Add `--all` to any list view to page it to exhaustion instead of returning
-just the first page; `--limit` then caps the total (mind FRED's rate limits on
-large lists). `fred chart` opens an interactive [ratatui](https://ratatui.rs/)
-line chart of a series' observations (it accepts the same flags as
-`observations`); press `q`, `Esc`, or `Ctrl-C` to quit.
-
-Install it with `cargo install ferric-fred-cli` (which provides the `fred`
-binary), or run it from the workspace with `cargo run -p ferric-fred-cli --
-<args>`. See `fred <command> --help` for every flag (`--units`, `--order-by`, …
-accept the FRED value sets).
-
-## Using the MCP server
-
-[![ferric-fred MCP server](https://glama.ai/mcp/servers/ojhermann-org/ferric-fred/badges/score.svg)](https://glama.ai/mcp/servers/ojhermann-org/ferric-fred)
-
-`fred-mcp` is an [MCP](https://modelcontextprotocol.io/) server (ADR-0010) that
-exposes FRED to MCP-capable clients over stdio. It reads `FRED_API_KEY` from the
-environment and provides thirty-one tools:
-
-| Tool | Purpose |
-|------|---------|
-| `search_series` | Find series by text (with ordering, sort, limit) |
-| `get_series` | Metadata for a series id |
-| `get_observations` | A series' observations (date range, units transform, frequency aggregation, sort, limit) |
-| `get_series_updates` | Series updated most recently (with class filter, a start/end time window, limit) |
-| `get_series_vintagedates` | The dates a series was revised (with sort, limit) |
-| `get_series_categories` | The categories a series belongs to |
-| `get_series_release` | The release a series belongs to |
-| `get_category` | A category's name and parent (id 0 is the tree root) |
-| `get_category_children` | The child categories of a category (walk the tree) |
-| `get_category_related` | Categories related to one (cross-tree links; often empty) |
-| `get_category_series` | The series in a category (with ordering, sort, limit) |
-| `get_releases` | List all data releases (with sort, limit) |
-| `get_releases_dates` | Release calendar across all releases (with sort, limit, include-no-data) |
-| `get_release` | A release's name, press-release flag, and link |
-| `get_release_series` | The series in a release (with ordering, sort, limit) |
-| `get_release_sources` | The sources a release draws from |
-| `get_release_dates` | One release's publication dates (with sort, limit, include-no-data) |
-| `get_release_tables` | A release's table tree (nested; optionally scoped to an element subtree) |
-| `get_sources` | List all data sources (with sort, limit) |
-| `get_source` | A source's name and link |
-| `get_source_releases` | The releases produced by a source (with sort, limit) |
-| `get_tags` | Browse/search the tag vocabulary (with search text, sort, limit) |
-| `get_related_tags` | Tags co-occurring with a seed set (with search text, sort, limit) |
-| `get_tags_series` | Series carrying all of a set of tags (with ordering, sort, limit) |
-| `get_series_tags` | A series' own tags |
-| `get_category_tags` | Tags used by a category's series (with search text, sort, limit) |
-| `get_category_related_tags` | Tags co-occurring with a seed set within a category |
-| `get_release_tags` | Tags used by a release's series (with search text, sort, limit) |
-| `get_release_related_tags` | Tags co-occurring with a seed set within a release |
-| `get_series_search_tags` | Tags of the series matching a search (with tag filter, sort, limit) |
-| `get_series_search_related_tags` | Tags co-occurring with a seed set among a search's series |
-
-Tool results are returned as JSON (MCP structured content). Install it with
-`cargo install ferric-fred-mcp` (which provides the `fred-mcp` binary) — or build
-from the workspace — then point your MCP client at it:
-
-```sh
-cargo install ferric-fred-mcp              # -> ~/.cargo/bin/fred-mcp
-cargo build --release -p ferric-fred-mcp   # or from the workspace: target/release/fred-mcp
-```
-
-```json
-{
-  "mcpServers": {
-    "fred": {
-      "command": "/path/to/ferric-fred/target/release/fred-mcp",
-      "env": { "FRED_API_KEY": "your-fred-api-key" }
-    }
-  }
-}
-```
-
-It is also listed on [Glama](https://glama.ai/mcp/servers/ojhermann-org/ferric-fred):
+The MCP server is listed and scored on
+[Glama](https://glama.ai/mcp/servers/ojhermann-org/ferric-fred):
 
 [![ferric-fred MCP server](https://glama.ai/mcp/servers/ojhermann-org/ferric-fred/badges/card.svg)](https://glama.ai/mcp/servers/ojhermann-org/ferric-fred)
 
 ## Development
 
-A Nix flake provides a reproducible toolchain (recent stable Rust via
-`oxalica/rust-overlay`, plus `cargo-nextest`, `cargo-deny`, `bacon`, and
-`gitleaks`):
+A Nix flake provides a reproducible toolchain (`nix develop`, or `direnv allow`
+once), but the project builds with a plain Rust toolchain too — Nix supplies the
+environment, not the build ([ADR-0008](docs/adr/0008-nix-flake-dev-environment.md)).
 
-```sh
-nix develop        # enter the dev shell
-# or, with direnv: `direnv allow` once, then it loads automatically
-```
-
-Nix is optional — the project builds with a normal Rust toolchain too. Install
-a recent stable Rust (e.g. via `rustup`) and use `cargo` as usual. Either way,
-building is plain `cargo build` / `cargo test`; Nix supplies the environment,
-not the build (see [ADR-0008](docs/adr/0008-nix-flake-dev-environment.md)).
-
-### Git hooks
-
-Two tracked hooks live in `.githooks/`:
-
-- **`pre-commit`** — a secret guard ([ADR-0014](docs/adr/0014-pre-commit-secret-guard.md)):
-  it blocks staged secret files (`.envrc`, `.env*`) and scans the staged diff
-  with [`gitleaks`](https://github.com/gitleaks/gitleaks) for pasted keys.
-- **`pre-push`** — runs formatting, clippy, and the offline test suite (the same
-  gate as CI) and blocks on failure.
-
-Enable them once per clone (`core.hooksPath` is local git config, not carried by
-git):
-
-```sh
-git config core.hooksPath .githooks
-```
-
-### Continuous integration
-
-`ci.yml` runs the offline gate (fmt, clippy, tests, doctests, `cargo deny`) on
-every push and PR, through the same flake as local dev. A separate, **dormant**
-`live.yml` runs the `#[ignore]` live FRED tests nightly (and on demand) — it
-stays a green no-op until an Infisical machine identity is configured via the
-`INFISICAL_CLIENT_ID` / `INFISICAL_CLIENT_SECRET` repository secrets (see
-[ADR-0016](docs/adr/0016-ci-live-tests-machine-identity.md)).
+Contributor setup, the fmt/clippy/test **gate**, the tracked git hooks, and the
+workflow for adding an endpoint live in **[CONTRIBUTING.md](CONTRIBUTING.md)**.
+CI (`ci.yml`) runs that same offline gate on every push and PR; a dormant
+`live.yml` runs the live FRED tests once an Infisical machine identity is
+configured ([ADR-0016](docs/adr/0016-ci-live-tests-machine-identity.md)).
 
 ## Secrets
 
-The client reads a **FRED API key** from the `FRED_API_KEY` environment
-variable. Get a free key at
-<https://fredaccount.stlouisfed.org/apikeys>.
-
-Secrets are injected via [Infisical](https://infisical.com) + direnv (see
-[ADR-0009](docs/adr/0009-secret-management-infisical-direnv.md)). One-time setup:
+The client reads a free **FRED API key** from the `FRED_API_KEY` environment
+variable (get one at <https://fredaccount.stlouisfed.org/apikeys>). Locally,
+secrets are injected via [Infisical](https://infisical.com) + direnv
+([ADR-0009](docs/adr/0009-secret-management-infisical-direnv.md)):
 
 ```sh
 cp .envrc.example .envrc     # local, git-ignored entry point
 infisical login             # user auth (opens a browser)
-infisical init              # link this dir → project, writes .infisical.json
+infisical init              # link this dir → project
 direnv allow                # load the shell + inject secrets on cd-in
 ```
 
 Store the key with `infisical secrets set FRED_API_KEY="…" --env=dev --path=/shared`.
 No Infisical? Just set it directly in your git-ignored `.envrc`:
-`export FRED_API_KEY="…"`. The library only reads the env var — it has no
+`export FRED_API_KEY="…"` — the library only reads the env var and has no
 dependency on Infisical.
 
 ## Architecture decisions
@@ -235,12 +99,11 @@ Design decisions are recorded as ADRs in [`docs/adr/`](docs/adr/). Start with
 
 ## License
 
-Dual-licensed under **MIT OR Apache-2.0** (your choice) — the Rust ecosystem
+Dual-licensed under **MIT OR Apache-2.0**, at your option — the Rust ecosystem
 default ([ADR-0006](docs/adr/0006-license.md)). See [`LICENSE-MIT`](LICENSE-MIT)
-and [`LICENSE-APACHE`](LICENSE-APACHE).
-
-Unless you state otherwise, any contribution you submit is licensed under the
-same dual terms (see [`CONTRIBUTING.md`](CONTRIBUTING.md)).
+and [`LICENSE-APACHE`](LICENSE-APACHE). Unless you state otherwise, any
+contribution you submit is licensed under the same dual terms (see
+[`CONTRIBUTING.md`](CONTRIBUTING.md)).
 
 This covers *our code*; FRED data itself is subject to the St. Louis Fed's terms
 of use, and you supply your own API key — the project ships no data and no key.
