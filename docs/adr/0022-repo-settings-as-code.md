@@ -52,13 +52,17 @@ dev shell / `gh` already provides locally); the default Actions `GITHUB_TOKEN`
 cannot carry that scope, which is why this is not wired into a workflow that
 relies on `GITHUB_TOKEN`.
 
-**CI drift-check (follow-up):** a scheduled/PR workflow running
-`repo-settings.sh check` would catch regressions like the one above
-automatically. It requires an admin-scoped PAT provisioned into ferric-fred's
-Infisical scope (the repo routes secrets through Infisical, not raw GitHub
-secrets — ADR-0018), then injected the same way `release.yml` injects the
-crates.io token. That credential provisioning is the one remaining step;
-tracked in issue #15.
+**CI drift-check:** `.github/workflows/repo-settings.yml` runs
+`repo-settings.sh check` on a weekly schedule (plus on PRs that touch the script,
+and on demand), catching regressions like the one above automatically. Reading
+the Actions workflow-permissions setting needs `administration` scope, which the
+default `GITHUB_TOKEN` cannot carry — so the workflow injects a fine-grained,
+repo-scoped, **read-only** admin PAT (`REPO_SETTINGS_TOKEN`) from Infisical at
+`dev:/ferric-fred`, via the existing `ferric-fred-ci` identity (secrets route
+through Infisical, not raw GitHub secrets — ADR-0018). It is gated like
+`live.yml`/`release.yml`: a green no-op on forks or before the token is
+provisioned. `apply` stays a local/manual action with an admin token; CI only
+ever runs the read-only `check`.
 
 ## Consequences
 
