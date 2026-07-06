@@ -89,6 +89,16 @@ struct GetObservationsParams {
     aggregation: Option<AggregationArg>,
     /// Sort order by date.
     sort: Option<SortOrderArg>,
+    /// ALFRED: start of the real-time period, `YYYY-MM-DD` — the data as it was
+    /// known then. Use the same value for `realtime_end` to snapshot the series
+    /// as of one day (point-in-time). Must be given together with `realtime_end`.
+    realtime_start: Option<String>,
+    /// ALFRED: end of the real-time period, `YYYY-MM-DD`. Must be given together
+    /// with `realtime_start`.
+    realtime_end: Option<String>,
+    /// ALFRED: specific revision dates to fetch, each `YYYY-MM-DD`. Each date
+    /// selects that vintage of the series.
+    vintage_dates: Option<Vec<String>>,
 }
 
 /// Input parameters for the `get_series_updates` tool.
@@ -456,9 +466,11 @@ impl FredServer {
 
     #[tool(
         name = "get_observations",
-        description = "Fetch a FRED series' observations (date/value pairs). Supports an optional \
-                       date range, a units transform, aggregation to a lower frequency, sort \
-                       order, and a result limit.",
+        description = "Fetch a FRED series' observations (date/value pairs, each with its ALFRED \
+                       real-time period). Supports an optional date range, a units transform, \
+                       aggregation to a lower frequency, sort order, and a result limit. For \
+                       point-in-time/vintage (ALFRED) data, set realtime_start/realtime_end (both \
+                       together; same date = the series as known on that day) and/or vintage_dates.",
         annotations(
             read_only_hint = true,
             destructive_hint = false,
@@ -494,6 +506,30 @@ impl FredServer {
         }
         if let Some(sort) = params.sort {
             request = request.sort_order(sort.into());
+        }
+        // FRED requires the ALFRED real-time period as a pair; enforce that here
+        // since the two arrive as separate optional params.
+        match (&params.realtime_start, &params.realtime_end) {
+            (Some(start), Some(end)) => {
+                request = request.realtime(
+                    parse_date(start, "realtime_start")?,
+                    parse_date(end, "realtime_end")?,
+                );
+            }
+            (None, None) => {}
+            _ => {
+                return Err(ErrorData::invalid_params(
+                    "realtime_start and realtime_end must be provided together".to_string(),
+                    None,
+                ));
+            }
+        }
+        if let Some(dates) = &params.vintage_dates {
+            let parsed = dates
+                .iter()
+                .map(|date| parse_date(date, "vintage_dates"))
+                .collect::<Result<Vec<_>, _>>()?;
+            request = request.vintage_dates(parsed);
         }
 
         match request.send().await {
@@ -1753,6 +1789,24 @@ mod tests {
             serde_json::from_value(serde_json::json!({"series_id": "GNPCA"})).unwrap();
         assert_eq!(params.series_id, "GNPCA");
         assert!(params.start.is_none() && params.units.is_none());
+        assert!(params.realtime_start.is_none() && params.vintage_dates.is_none());
+    }
+
+    #[test]
+    fn observation_params_carry_alfred_fields() {
+        let params: GetObservationsParams = serde_json::from_value(serde_json::json!({
+            "series_id": "GNPCA",
+            "realtime_start": "2020-01-01",
+            "realtime_end": "2020-01-01",
+            "vintage_dates": ["2020-03-26", "2021-03-25"]
+        }))
+        .unwrap();
+        assert_eq!(params.realtime_start.as_deref(), Some("2020-01-01"));
+        assert_eq!(params.realtime_end.as_deref(), Some("2020-01-01"));
+        assert_eq!(
+            params.vintage_dates,
+            Some(vec!["2020-03-26".to_string(), "2021-03-25".to_string()])
+        );
     }
 
     #[test]

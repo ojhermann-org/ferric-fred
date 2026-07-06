@@ -36,6 +36,10 @@ pub struct ObservationsRequest<'a> {
     sort_order: Option<SortOrder>,
     limit: Option<u32>,
     offset: Option<u32>,
+    /// FRED's `realtime_start`/`realtime_end` — a real-time period (ALFRED,
+    /// ADR-0024), stored as a pair since it reads as one window.
+    realtime: Option<(NaiveDate, NaiveDate)>,
+    vintage_dates: Vec<NaiveDate>,
 }
 
 impl<'a> ObservationsRequest<'a> {
@@ -51,6 +55,8 @@ impl<'a> ObservationsRequest<'a> {
             sort_order: None,
             limit: None,
             offset: None,
+            realtime: None,
+            vintage_dates: Vec::new(),
         }
     }
 
@@ -109,6 +115,25 @@ impl<'a> ObservationsRequest<'a> {
         self
     }
 
+    /// Return the data **as it was known** over this real-time period
+    /// (`realtime_start`/`realtime_end`) — the ALFRED / point-in-time dimension
+    /// (ADR-0024). Pass the **same date twice** for a point-in-time snapshot (the
+    /// series as it looked on that day); pass a window to see each value's
+    /// real-time period. Each returned [`Observation`] carries its own
+    /// [`realtime_start`](Observation::realtime_start)/[`realtime_end`](Observation::realtime_end).
+    pub fn realtime(mut self, start: NaiveDate, end: NaiveDate) -> Self {
+        self.realtime = Some((start, end));
+        self
+    }
+
+    /// Return the data as of these specific revision dates (`vintage_dates`) —
+    /// each date selects that vintage of the series (ALFRED, ADR-0024).
+    /// Complements [`realtime`](Self::realtime); an empty list is ignored.
+    pub fn vintage_dates(mut self, dates: impl IntoIterator<Item = NaiveDate>) -> Self {
+        self.vintage_dates = dates.into_iter().collect();
+        self
+    }
+
     /// Run the request and return the matching observations.
     ///
     /// # Errors
@@ -147,6 +172,19 @@ impl<'a> ObservationsRequest<'a> {
         }
         if let Some(offset) = self.offset {
             params.push(("offset", offset.to_string()));
+        }
+        if let Some((start, end)) = self.realtime {
+            params.push(("realtime_start", start.to_string()));
+            params.push(("realtime_end", end.to_string()));
+        }
+        if !self.vintage_dates.is_empty() {
+            let joined = self
+                .vintage_dates
+                .iter()
+                .map(NaiveDate::to_string)
+                .collect::<Vec<_>>()
+                .join(",");
+            params.push(("vintage_dates", joined));
         }
         params
     }
@@ -197,6 +235,33 @@ mod tests {
             ("sort_order", "desc"),
             ("limit", "50"),
             ("offset", "5"),
+        ] {
+            assert!(
+                params.contains(&(expected.0, expected.1.to_owned())),
+                "missing {expected:?} in {params:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn realtime_and_vintage_dates_serialize() {
+        let client = test_client();
+        let request = client
+            .observations(&SeriesId::new("GNPCA"))
+            .realtime(
+                NaiveDate::from_ymd_opt(2020, 1, 1).unwrap(),
+                NaiveDate::from_ymd_opt(2020, 1, 1).unwrap(),
+            )
+            .vintage_dates([
+                NaiveDate::from_ymd_opt(2020, 3, 26).unwrap(),
+                NaiveDate::from_ymd_opt(2021, 3, 25).unwrap(),
+            ]);
+
+        let params = request.query_params();
+        for expected in [
+            ("realtime_start", "2020-01-01"),
+            ("realtime_end", "2020-01-01"),
+            ("vintage_dates", "2020-03-26,2021-03-25"),
         ] {
             assert!(
                 params.contains(&(expected.0, expected.1.to_owned())),

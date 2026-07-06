@@ -5,6 +5,7 @@
 //! cargo nextest run -p ferric-fred --run-ignored all
 //! ```
 
+use chrono::NaiveDate;
 use ferric_fred::{Client, SeriesId, SortOrder, Units};
 
 #[tokio::test]
@@ -46,4 +47,51 @@ async fn honors_request_parameters() {
             "sort_order=desc should yield newest-first dates"
         );
     }
+}
+
+#[tokio::test]
+#[ignore = "hits the live FRED API; requires FRED_API_KEY"]
+async fn point_in_time_reflects_the_as_of_date() {
+    let client = Client::from_env().expect("FRED_API_KEY should be set for the live test");
+    let as_of = NaiveDate::from_ymd_opt(2020, 1, 1).unwrap();
+
+    // GNPCA (annual real GNP) is revised, so it exercises ALFRED well.
+    let snapshot = client
+        .observations(&SeriesId::new("GNPCA"))
+        .realtime(as_of, as_of)
+        .send()
+        .await
+        .expect("point-in-time observations request should succeed");
+
+    assert!(!snapshot.is_empty());
+    // Every row carries the requested real-time period...
+    assert!(
+        snapshot
+            .iter()
+            .all(|o| o.realtime_start == as_of && o.realtime_end == as_of),
+        "each row should report the requested as-of period"
+    );
+    // ...and nothing postdates the snapshot — no look-ahead.
+    assert!(
+        snapshot.iter().all(|o| o.date < as_of),
+        "as of {as_of}, no future observation should be known"
+    );
+
+    // The point-in-time value for a revised year differs from today's latest.
+    let latest = client
+        .observations(&SeriesId::new("GNPCA"))
+        .send()
+        .await
+        .expect("latest observations request should succeed");
+    let year = NaiveDate::from_ymd_opt(2017, 1, 1).unwrap();
+    let then = snapshot
+        .iter()
+        .find(|o| o.date == year)
+        .and_then(|o| o.value);
+    let now = latest.iter().find(|o| o.date == year).and_then(|o| o.value);
+    assert!(
+        then.is_some() && now.is_some(),
+        "2017 should be present in both"
+    );
+    assert_ne!(then, now, "GNPCA 2017 was revised between 2020 and now");
 }

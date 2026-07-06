@@ -163,7 +163,10 @@ mod tests {
     use ratatui::Terminal;
 
     fn obs(year: i32, value: Option<f64>) -> Observation {
+        let today = NaiveDate::from_ymd_opt(2026, 7, 6).unwrap();
         Observation {
+            realtime_start: today,
+            realtime_end: today,
             date: NaiveDate::from_ymd_opt(year, 1, 1).unwrap(),
             value,
         }
