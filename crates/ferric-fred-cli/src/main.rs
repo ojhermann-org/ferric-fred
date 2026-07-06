@@ -327,6 +327,18 @@ struct ObservationOptions {
     /// Sort order by date.
     #[arg(long)]
     sort: Option<SortOrderArg>,
+    /// ALFRED: start of the real-time period (YYYY-MM-DD) — the data as it was
+    /// known then. Use the same value for --realtime-end to snapshot the series
+    /// as of one day (point-in-time). Needs --realtime-end.
+    #[arg(long, requires = "realtime_end", value_name = "YYYY-MM-DD")]
+    realtime_start: Option<NaiveDate>,
+    /// ALFRED: end of the real-time period (YYYY-MM-DD). Needs --realtime-start.
+    #[arg(long, requires = "realtime_start", value_name = "YYYY-MM-DD")]
+    realtime_end: Option<NaiveDate>,
+    /// ALFRED: specific revision dates to fetch (comma-separated YYYY-MM-DD),
+    /// e.g. --vintage-dates 2020-03-26,2021-03-25.
+    #[arg(long, value_delimiter = ',', value_name = "DATES")]
+    vintage_dates: Vec<NaiveDate>,
 }
 
 #[tokio::main]
@@ -1523,6 +1535,12 @@ fn build_request<'a>(
     if let Some(sort) = options.sort {
         request = request.sort_order(sort.into());
     }
+    if let (Some(start), Some(end)) = (options.realtime_start, options.realtime_end) {
+        request = request.realtime(start, end);
+    }
+    if !options.vintage_dates.is_empty() {
+        request = request.vintage_dates(options.vintage_dates.iter().copied());
+    }
     request
 }
 
@@ -1541,11 +1559,23 @@ async fn observations(
         return print_json(&observations);
     }
 
+    // Show each row's real-time period only for an ALFRED (point-in-time /
+    // vintage) query — the latest view stays a clean `date  value`.
+    let show_realtime = options.realtime_start.is_some() || !options.vintage_dates.is_empty();
+
     println!("{} observation(s):", observations.len());
     for observation in &observations {
-        match observation.value {
-            Some(value) => println!("{}\t{}", observation.date, value),
-            None => println!("{}\t.", observation.date),
+        let value = match observation.value {
+            Some(value) => value.to_string(),
+            None => ".".to_string(),
+        };
+        if show_realtime {
+            println!(
+                "{}\t{}\t[{}..{}]",
+                observation.date, value, observation.realtime_start, observation.realtime_end
+            );
+        } else {
+            println!("{}\t{}", observation.date, value);
         }
     }
     Ok(())

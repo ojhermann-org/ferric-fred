@@ -35,7 +35,8 @@ managed on top; see the ADRs).
 
 ## What it covers
 
-The library wraps **all of FRED's read endpoints** — series and observations,
+The library wraps **all of FRED's read endpoints** — series and observations
+(including ALFRED point-in-time / vintage data via a real-time window),
 search, categories, releases (including the nested release-table tree, with
 optional inline observation values), sources,
 and tags — behind ergonomic builders, with newtype identifiers, typed enums for

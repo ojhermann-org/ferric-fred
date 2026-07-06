@@ -5,10 +5,13 @@ use crate::{Frequency, SeasonalAdjustment, SeriesId};
 
 /// Metadata describing a FRED series (the `fred/series` endpoint).
 ///
-/// ALFRED vintage fields (`realtime_start` / `realtime_end`) are deferred for v1
-/// and ignored on the wire (ADR-0005). `last_updated` is kept as FRED's raw
-/// string for now — FRED encodes it with a non-standard timezone offset (e.g.
-/// `2024-03-28 07:56:03-05`); a typed datetime is a later refinement.
+/// This `series` metadata endpoint's own ALFRED fields (`realtime_start` /
+/// `realtime_end`) are still ignored on the wire (ADR-0005); point-in-time
+/// *observations* are supported via [`Observation`](crate::Observation) and
+/// [`ObservationsRequest::realtime`](crate::ObservationsRequest::realtime)
+/// (ADR-0024). `last_updated` is kept as FRED's raw string for now — FRED
+/// encodes it with a non-standard timezone offset (e.g. `2024-03-28 07:56:03-05`);
+/// a typed datetime is a later refinement.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Series {

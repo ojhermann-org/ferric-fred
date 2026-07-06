@@ -1029,8 +1029,8 @@ mod tests {
     async fn observations_parse_missing_and_present_values() {
         let server = MockServer::start().await;
         let body = r#"{"observations":[
-            {"date":"1930-01-01","value":"."},
-            {"date":"1929-01-01","value":"1065.9"}
+            {"realtime_start":"2026-07-06","realtime_end":"2026-07-06","date":"1930-01-01","value":"."},
+            {"realtime_start":"2026-07-06","realtime_end":"2026-07-06","date":"1929-01-01","value":"1065.9"}
         ]}"#;
         Mock::given(method("GET"))
             .and(path("/series/observations"))
@@ -1046,6 +1046,35 @@ mod tests {
         assert_eq!(observations.len(), 2);
         assert_eq!(observations[0].value, None); // the "." sentinel
         assert_eq!(observations[1].value, Some(1065.9));
+    }
+
+    #[tokio::test]
+    async fn observations_point_in_time_sends_realtime_and_parses_period() {
+        let server = MockServer::start().await;
+        // A point-in-time query: realtime_start == realtime_end must reach the
+        // wire, and each row's archived real-time period must deserialize.
+        Mock::given(method("GET"))
+            .and(path("/series/observations"))
+            .and(query_param("realtime_start", "2020-01-01"))
+            .and(query_param("realtime_end", "2020-01-01"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"observations":[
+                    {"realtime_start":"2020-01-01","realtime_end":"2020-01-01","date":"2017-01-01","value":"18344.563"}
+                ]}"#,
+            ))
+            .mount(&server)
+            .await;
+
+        let as_of = chrono::NaiveDate::from_ymd_opt(2020, 1, 1).unwrap();
+        let observations = client_for(&server)
+            .observations(&SeriesId::new("GNPCA"))
+            .realtime(as_of, as_of)
+            .send()
+            .await
+            .expect("point-in-time observations parse");
+        assert_eq!(observations[0].realtime_start, as_of);
+        assert_eq!(observations[0].realtime_end, as_of);
+        assert_eq!(observations[0].value, Some(18344.563));
     }
 
     #[tokio::test]
