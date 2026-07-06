@@ -1,7 +1,7 @@
 [package]
 name = "ferric-fred-cli"
 description = "Command-line interface for FRED (Federal Reserve Economic Data), built on the ferric-fred client."
-version = "0.3.1"
+version = "0.3.2"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -18,7 +18,7 @@ path = "src/main.rs"
 # the CLI without updating it (ADR-0002). The explicit version (kept in step with
 # the library crate's own version by release-plz — ADR-0012) is used when
 # published to crates.io; the path is used locally.
-ferric-fred = { path = "../ferric-fred", version = "0.3.1" }
+ferric-fred = { path = "../ferric-fred", version = "0.3.2" }
 anyhow = { workspace = true }
 clap = { workspace = true }
 chrono = { workspace = true }
