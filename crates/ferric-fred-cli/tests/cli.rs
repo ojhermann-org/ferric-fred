@@ -32,7 +32,62 @@ fn help_lists_every_subcommand() {
         .stdout(predicate::str::contains("release"))
         .stdout(predicate::str::contains("source"))
         .stdout(predicate::str::contains("tags"))
-        .stdout(predicate::str::contains("updates"));
+        .stdout(predicate::str::contains("updates"))
+        .stdout(predicate::str::contains("geofred"));
+}
+
+#[test]
+fn geofred_regional_requires_all_fred_mandated_options() {
+    // FRED requires region_type, date, units, frequency, and season for
+    // regional/data; clap enforces them at parse time (ADR-0025).
+    fred()
+        .args(["geofred", "regional", "882"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("required arguments"))
+        .stderr(predicate::str::contains("--region-type"))
+        .stderr(predicate::str::contains("--season"));
+}
+
+#[test]
+fn geofred_regional_rejects_an_invalid_region_type() {
+    fred()
+        .args([
+            "geofred",
+            "regional",
+            "882",
+            "--region-type",
+            "planet",
+            "--date",
+            "2013-01-01",
+            "--units",
+            "Dollars",
+            "--frequency",
+            "annual",
+            "--season",
+            "nsa",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("invalid value"))
+        .stderr(predicate::str::contains("state"));
+}
+
+#[test]
+fn geofred_series_data_date_and_start_date_conflict() {
+    fred()
+        .args([
+            "geofred",
+            "series-data",
+            "SMU56000000500000001",
+            "--date",
+            "2013-01-01",
+            "--start-date",
+            "2010-01-01",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("cannot be used with"));
 }
 
 #[test]
@@ -609,4 +664,60 @@ fn scoped_tag_facet_views() {
         .stdout(predicate::str::contains(
             "tags related to monthly among series matching",
         ));
+}
+
+#[test]
+#[ignore = "hits the live FRED API; requires FRED_API_KEY"]
+fn geofred_regional_lists_regions() {
+    // Series group 882 = Per Capita Personal Income; a state cross-section.
+    Command::cargo_bin("fred")
+        .unwrap()
+        .args([
+            "geofred",
+            "regional",
+            "882",
+            "--region-type",
+            "state",
+            "--date",
+            "2013-01-01",
+            "--units",
+            "Dollars",
+            "--frequency",
+            "annual",
+            "--season",
+            "nsa",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("2013-01-01:"))
+        .stdout(predicate::str::contains("Alabama"));
+}
+
+#[test]
+#[ignore = "hits the live FRED API; requires FRED_API_KEY"]
+fn geofred_group_shows_metadata() {
+    Command::cargo_bin("fred")
+        .unwrap()
+        .args(["geofred", "group", "SMU56000000500000001"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("region type: state"));
+}
+
+#[test]
+#[ignore = "hits the live FRED API; requires FRED_API_KEY"]
+fn geofred_shapes_summarizes_and_json_emits_geojson() {
+    Command::cargo_bin("fred")
+        .unwrap()
+        .args(["geofred", "shapes", "--shape", "bea"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("feature(s)"));
+
+    Command::cargo_bin("fred")
+        .unwrap()
+        .args(["geofred", "shapes", "--shape", "bea", "--json"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"FeatureCollection\""));
 }

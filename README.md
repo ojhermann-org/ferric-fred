@@ -47,8 +47,8 @@ FRED's closed value sets, a non-panicking error taxonomy, and **auto-pagination*
 lazily; `--all` on the CLI). See [ADR-0020](docs/adr/0020-auto-pagination.md) and
 [ADR-0021](docs/adr/0021-streaming-pagination.md).
 
-GeoFRED support currently lands at the **library** layer; CLI and MCP exposure
-follow in subsequent slices ([ADR-0013](docs/adr/0013-endpoint-addition-pattern.md)).
+GeoFRED support currently lands at the **library** and **CLI** layers; MCP
+exposure follows in a subsequent slice ([ADR-0013](docs/adr/0013-endpoint-addition-pattern.md)).
 
 Pick an entry point:
 
@@ -56,8 +56,9 @@ Pick an entry point:
   See the [crate README](crates/ferric-fred/README.md) and
   [docs.rs](https://docs.rs/ferric-fred).
 - **CLI** (`fred`) — `cargo install ferric-fred-cli`; search, show metadata,
-  print or **chart** observations in the terminal, and browse categories,
-  releases, sources, and tags. See the [crate README](crates/ferric-fred-cli/README.md)
+  print or **chart** observations in the terminal, browse categories,
+  releases, sources, and tags, and pull **GeoFRED** regional data and map shapes
+  (`fred geofred`). See the [crate README](crates/ferric-fred-cli/README.md)
   or `fred <command> --help`.
 - **MCP server** (`fred-mcp`) — `cargo install ferric-fred-mcp`; **31 tools** over
   stdio covering the same read surface, for MCP-capable clients ([ADR-0010](docs/adr/0010-mcp-server-design.md)).

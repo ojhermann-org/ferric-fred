@@ -6,8 +6,9 @@
 `fred` — a command-line interface to [FRED](https://fred.stlouisfed.org/)
 (Federal Reserve Economic Data), built on the
 [`ferric-fred`](https://crates.io/crates/ferric-fred) client. Search and inspect
-series, print or **chart** observations in the terminal, and browse categories,
-releases, sources, and tags — as text or JSON.
+series, print or **chart** observations in the terminal, browse categories,
+releases, sources, and tags, and pull **GeoFRED** regional data and map shapes —
+as text or JSON.
 
 ## Install
 
@@ -30,6 +31,10 @@ fred release 53 --series --limit 5                               # series in a r
 fred source 18 --releases --limit 5                              # releases produced by a source
 fred updates --filter macro --limit 10                           # recently updated series
 fred tags gdp quarterly --limit 5                                # series carrying all these tags
+fred geofred group SMU56000000500000001                          # GeoFRED series-group metadata
+fred geofred regional 882 --region-type state --date 2013-01-01 \
+  --units Dollars --frequency annual --season nsa                # a region cross-section
+fred geofred shapes --shape bea --json                           # region boundary GeoJSON
 fred source --all                                                # page a list to exhaustion
 fred series GNPCA --json | jq .frequency                         # JSON output for scripting
 ```

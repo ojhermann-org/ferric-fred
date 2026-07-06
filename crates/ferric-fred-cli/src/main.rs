@@ -7,6 +7,7 @@
 
 mod args;
 mod chart;
+mod geofred;
 
 use anyhow::{Context, Result};
 use chrono::{NaiveDate, NaiveDateTime};
@@ -227,6 +228,15 @@ enum Command {
         names: Vec<String>,
         #[command(flatten)]
         options: TagsOptions,
+    },
+    /// GeoFRED / Maps API: regional data and geographic shape files.
+    ///
+    /// Sub-commands: `regional` (a region cross-section for a series group),
+    /// `series-data` (one series across regions), `group` (series-group
+    /// metadata), and `shapes` (region boundary GeoJSON).
+    Geofred {
+        #[command(subcommand)]
+        command: geofred::GeofredCommand,
     },
 }
 
@@ -456,6 +466,7 @@ async fn main() -> Result<()> {
             end_time,
             limit,
         } => updates(&client, filter, start_time, end_time, limit, json, all).await,
+        Command::Geofred { command } => geofred::run(&client, command, json).await,
     }
 }
 
