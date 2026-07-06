@@ -18,6 +18,16 @@ async fn sources_list_and_single_and_releases() {
     let all = client.sources().send_all().await.expect("all sources");
     assert_eq!(all.len(), results.count as usize);
 
+    // `stream` yields the same items lazily; counting them agrees with `count`.
+    use futures_util::TryStreamExt;
+    let streamed: Vec<_> = client
+        .sources()
+        .stream()
+        .try_collect()
+        .await
+        .expect("streamed sources");
+    assert_eq!(streamed.len(), results.count as usize);
+
     // 18 = "U.S. Bureau of Economic Analysis", a stable source.
     let source = client.source(SourceId::new(18)).await.expect("source 18");
     assert_eq!(source.id, SourceId::new(18));

@@ -1237,6 +1237,119 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn stream_walks_every_page() {
+        use futures_util::TryStreamExt;
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/sources"))
+            .and(query_param("offset", "0"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"count":3,"offset":0,"limit":1000,"sources":[
+                    {"id":1,"name":"Source One"},
+                    {"id":2,"name":"Source Two"}
+                ]}"#,
+            ))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/sources"))
+            .and(query_param("offset", "2"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"count":3,"offset":2,"limit":1000,"sources":[
+                    {"id":3,"name":"Source Three"}
+                ]}"#,
+            ))
+            .mount(&server)
+            .await;
+
+        let sources: Vec<_> = client_for(&server)
+            .sources()
+            .stream()
+            .try_collect()
+            .await
+            .expect("stream walks both pages");
+        let ids: Vec<_> = sources.iter().map(|s| s.id).collect();
+        assert_eq!(
+            ids,
+            vec![SourceId::new(1), SourceId::new(2), SourceId::new(3)]
+        );
+    }
+
+    #[tokio::test]
+    async fn stream_treats_limit_as_a_ceiling() {
+        use futures_util::TryStreamExt;
+
+        let server = MockServer::start().await;
+        // Only an offset-0, limit-2 page is mocked; a `.limit(2)` ceiling must
+        // stop the stream after it, without ever requesting a second page.
+        Mock::given(method("GET"))
+            .and(path("/sources"))
+            .and(query_param("offset", "0"))
+            .and(query_param("limit", "2"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"count":5,"offset":0,"limit":2,"sources":[
+                    {"id":1,"name":"Source One"},
+                    {"id":2,"name":"Source Two"}
+                ]}"#,
+            ))
+            .mount(&server)
+            .await;
+
+        let sources: Vec<_> = client_for(&server)
+            .sources()
+            .limit(2)
+            .stream()
+            .try_collect()
+            .await
+            .expect("stream stops at the ceiling");
+        let ids: Vec<_> = sources.iter().map(|s| s.id).collect();
+        assert_eq!(ids, vec![SourceId::new(1), SourceId::new(2)]);
+    }
+
+    #[tokio::test]
+    async fn stream_surfaces_a_mid_stream_error() {
+        use futures_util::StreamExt;
+
+        let server = MockServer::start().await;
+        // Page one succeeds; page two (offset 2) fails. The items from page one
+        // arrive as `Ok`, then the error arrives as a final `Err` item.
+        Mock::given(method("GET"))
+            .and(path("/sources"))
+            .and(query_param("offset", "0"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"count":4,"offset":0,"limit":1000,"sources":[
+                    {"id":1,"name":"Source One"},
+                    {"id":2,"name":"Source Two"}
+                ]}"#,
+            ))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/sources"))
+            .and(query_param("offset", "2"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+
+        let results: Vec<_> = client_for(&server).sources().stream().collect().await;
+        assert_eq!(results.len(), 3);
+        assert_eq!(
+            results[0].as_ref().expect("first item is Ok").id,
+            SourceId::new(1)
+        );
+        assert_eq!(
+            results[1].as_ref().expect("second item is Ok").id,
+            SourceId::new(2)
+        );
+        assert!(
+            matches!(results[2], Err(Error::Api { status: 500, .. })),
+            "third item should be the page-two error, got {:?}",
+            results[2]
+        );
+    }
+
+    #[tokio::test]
     async fn malformed_body_maps_to_deserialize_error() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
