@@ -1,0 +1,103 @@
+name: Repo settings
+
+# Drift-check for repo-level GitHub settings (ADR-0022). scripts/repo-settings.sh
+# is the source of truth; this runs its `check` mode against live GitHub and
+# fails if they differ, so an out-of-band UI change gets caught.
+#
+# Reading the Actions workflow-permissions setting needs a token with the
+# Administration scope, which the default GITHUB_TOKEN cannot carry. So the check
+# uses REPO_SETTINGS_TOKEN — a fine-grained, repo-scoped, read-only admin PAT —
+# injected from Infisical (dev:/ferric-fred) via the ferric-fred-ci identity,
+# exactly like live.yml/release.yml inject their secrets.
+#
+# Gated like live.yml: if the Infisical machine identity is not configured (a
+# fork or un-provisioned clone), the check is skipped and the workflow is a green
+# no-op. It also no-ops green if REPO_SETTINGS_TOKEN is not yet in Infisical.
+
+on:
+  pull_request:
+    paths:
+      - scripts/repo-settings.sh
+      - .github/workflows/repo-settings.yml
+  schedule:
+    - cron: "23 6 * * 1" # weekly, Monday ~06:23 UTC — catch out-of-band UI drift
+  workflow_dispatch: # manual "Run workflow" button
+
+concurrency:
+  group: repo-settings-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read # the admin reads use REPO_SETTINGS_TOKEN, not GITHUB_TOKEN
+
+jobs:
+  gate:
+    name: Check for Infisical machine identity
+    runs-on: ubuntu-latest
+    outputs:
+      configured: ${{ steps.check.outputs.configured }}
+    steps:
+      # Secrets can't be referenced in a job-level `if:`, so gate here and expose
+      # the result as an output the check job depends on.
+      - id: check
+        env:
+          INFISICAL_CLIENT_ID: ${{ secrets.INFISICAL_CLIENT_ID }}
+        run: |
+          if [ -n "${INFISICAL_CLIENT_ID}" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Infisical machine identity not configured — skipping repo-settings drift check."
+          fi
+
+  check:
+    name: repo-settings drift check
+    needs: gate
+    if: needs.gate.outputs.configured == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # Same flake as dev / CI / live (ADR-0008): the infisical CLI comes from the
+      # dev shell. `gh` and `jq` are preinstalled on the runner.
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      # Put the flake's infisical CLI on PATH for the plain shell below. This
+      # workflow deliberately does NOT wrap its logic in a single-quoted
+      # `nix develop --command bash -c '...'` block: an apostrophe inside such a
+      # block once silently broke release.yml. Keeping the logic in a normal
+      # file-based `run:` script avoids that fragility and lets the token probe
+      # use normal quoting.
+      - name: Expose the flake's infisical CLI on PATH
+        run: nix develop --command bash -c 'dirname "$(command -v infisical)" >> "$GITHUB_PATH"'
+
+      # Authenticate the machine identity, then inject REPO_SETTINGS_TOKEN at
+      # dev:/ferric-fred and run the check. The project id is read from the
+      # committed .infisical.json so it stays single-sourced. GITHUB_TOKEN is
+      # masked by Actions; the runner is ephemeral and single-tenant.
+      - name: Drift check
+        env:
+          INFISICAL_CLIENT_ID: ${{ secrets.INFISICAL_CLIENT_ID }}
+          INFISICAL_CLIENT_SECRET: ${{ secrets.INFISICAL_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          project_id="$(jq -r .workspaceId .infisical.json)"
+          login_token="$(infisical login --method=universal-auth \
+            --client-id="$INFISICAL_CLIENT_ID" \
+            --client-secret="$INFISICAL_CLIENT_SECRET" \
+            --plain --silent)"
+          echo "::add-mask::$login_token"
+
+          # No-op green until the PAT is provisioned: probe for a non-empty
+          # REPO_SETTINGS_TOKEN without printing it (a missing folder/key makes
+          # infisical exit non-zero or the value empty — either way, skip).
+          if infisical run --token="$login_token" --projectId="$project_id" \
+               --env=dev --path=/ferric-fred -- \
+               bash -c 'test -n "${REPO_SETTINGS_TOKEN:-}"'; then
+            infisical run --token="$login_token" --projectId="$project_id" \
+              --env=dev --path=/ferric-fred -- \
+              scripts/repo-settings.sh check
+          else
+            echo "::notice::REPO_SETTINGS_TOKEN not provisioned in Infisical (dev:/ferric-fred) yet — skipping drift check (green no-op)."
+          fi

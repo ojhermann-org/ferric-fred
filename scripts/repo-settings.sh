@@ -23,6 +23,14 @@ set -euo pipefail
 
 REPO="ojhermann-org/ferric-fred"
 
+# CI injects the repo-admin PAT as REPO_SETTINGS_TOKEN (from Infisical,
+# dev:/ferric-fred); `gh` authenticates from GH_TOKEN. Bridge them so the CI
+# workflow needs no extra wiring. Locally neither is set and `gh` uses your
+# logged-in session — also fine.
+if [[ -z "${GH_TOKEN:-}" && -n "${REPO_SETTINGS_TOKEN:-}" ]]; then
+  export GH_TOKEN="$REPO_SETTINGS_TOKEN"
+fi
+
 # --- Desired state -----------------------------------------------------------
 # Values mirror the intended configuration. Changing a value here and running
 # `apply` (or merging so CI applies) is how a settings change is made — always
