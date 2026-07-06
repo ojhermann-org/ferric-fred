@@ -3,18 +3,27 @@
 //!
 //! [FRED]: https://fred.stlouisfed.org/
 //!
-//! This crate is in early construction. The first implemented slice fetches a
-//! series' observations end-to-end; see the design ADRs under `docs/adr/` for
-//! the decisions that shape the API (async-first client, typed error taxonomy,
-//! newtype identifiers, and forward-compatible domain modelling).
+//! The client covers all of FRED's read endpoints — series, observations,
+//! search, categories, releases, sources, tags, and the release table tree —
+//! behind ergonomic async builders, with newtype identifiers, typed enums for
+//! FRED's closed value sets, and a typed [`Error`] taxonomy that never panics on
+//! a network or parse failure. Paginated endpoints can be walked to exhaustion
+//! with [`Paginate::send_all`] or streamed lazily with [`Paginate::stream`]. See
+//! the design ADRs under `docs/adr/` for the decisions that shape the API.
 //!
 //! ```no_run
 //! # async fn run() -> ferric_fred::Result<()> {
-//! use ferric_fred::{Client, SeriesId};
+//! use ferric_fred::{Client, Paginate, SeriesId};
 //!
 //! let client = Client::from_env()?; // reads FRED_API_KEY
+//!
+//! // One series' observations:
 //! let observations = client.observations(&SeriesId::new("GNPCA")).send().await?;
 //! println!("{} observations", observations.len());
+//!
+//! // Search, paged to exhaustion (or `.stream()` for lazy iteration):
+//! let matches = client.search("unemployment rate").send_all().await?;
+//! println!("{} matching series", matches.len());
 //! # Ok(())
 //! # }
 //! ```
