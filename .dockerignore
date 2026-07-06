@@ -1,0 +1,14 @@
+# Keep the Docker build context small and secrets out of it.
+# The build only needs the Cargo manifests and crate sources.
+target/
+.git/
+.github/
+.direnv/
+result
+result-*
+docs/
+benchmarks/
+.envrc
+.envrc.*
+.env
+.env.*

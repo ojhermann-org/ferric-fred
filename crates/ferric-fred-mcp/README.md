@@ -36,6 +36,17 @@ Point your client at the binary and give it a free
 
 (Use an absolute path to the binary if `fred-mcp` isn't on the client's `PATH`.)
 
+## Run in a container
+
+A [`Dockerfile`](https://github.com/ojhermann-org/ferric-fred/blob/main/Dockerfile)
+at the repo root builds a small image that runs `fred-mcp` over stdio. Pass your
+key at run time (the server speaks MCP on stdin/stdout, so keep it attached):
+
+```sh
+docker build -t ferric-fred-mcp .
+docker run -i -e FRED_API_KEY=your-fred-api-key ferric-fred-mcp
+```
+
 ## Tools
 
 A few of the 31 tools:
@@ -58,6 +69,14 @@ The full tool list, with parameters, is in the
 — full tool reference and design ADRs (see
 [ADR-0010](https://github.com/ojhermann-org/ferric-fred/blob/main/docs/adr/0010-mcp-server-design.md)
 for the server design).
+
+## MCP registry
+
+Published to the [official MCP registry](https://github.com/modelcontextprotocol/registry).
+The token below is how the registry verifies that this crate and its registry
+entry share an owner (it is matched against the crate's published README):
+
+mcp-name: io.github.ojhermann-org/ferric-fred-mcp
 
 ## License
 
