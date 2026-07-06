@@ -65,6 +65,20 @@ git `main`, not crates.io):
    *re-score*. The public `/score` page is CDN-cached, so cache-bust (`?cb=…`
    plus no-cache headers) to confirm; a rebuild alone won't visibly move the number.
 
+**Keep Glama and crates.io in sync by releasing MCP changes promptly.** Glama
+reads the version straight from `main`'s `crates/ferric-fred-mcp/Cargo.toml` (not
+crates.io — `server.json`/`glama.json` don't carry an authoritative version), and
+release-plz bumps that Cargo.toml in the *same commit* that publishes to crates.io.
+So the two are in sync at every release and only drift *while an MCP-surface PR
+sits merged-but-unreleased on `main`* — Glama builds the new tools under the old,
+still-published version, which both mislabels the score and causes the version
+collision that blocks a fresh **Build & release** capture. The rule: **release any
+MCP-surface change on its own, promptly — don't batch it** behind unrelated work.
+Non-MCP PRs (library-only, CLI-only, docs) can batch freely; they don't move
+Glama's build, so their version drift is cosmetic and self-heals at the next
+release. This is *not* a "release on every push" rule — it targets exactly the
+changes that move the Glama surface.
+
 This review is kicked off from a session (Claude can't self-schedule); the
 checklist keeps it repeatable.
 

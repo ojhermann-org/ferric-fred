@@ -6,13 +6,13 @@
     "url": "https://github.com/ojhermann-org/ferric-fred",
     "source": "github"
   },
-  "version": "0.3.2",
+  "version": "0.3.6",
   "packages": [
     {
       "registryType": "cargo",
       "registryBaseUrl": "https://crates.io",
       "identifier": "ferric-fred-mcp",
-      "version": "0.3.2",
+      "version": "0.3.6",
       "transport": {
         "type": "stdio"
       },
