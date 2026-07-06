@@ -16,8 +16,11 @@
 //! (`get_tags`, `get_related_tags`, `get_tags_series`, `get_series_tags`), and
 //! the scoped tag-facet tools (`get_category_tags`, `get_category_related_tags`,
 //! `get_release_tags`, `get_release_related_tags`, `get_series_search_tags`,
-//! `get_series_search_related_tags`) — one per library endpoint, with typed
-//! inputs (see [`params`]).
+//! `get_series_search_related_tags`), and the GeoFRED / Maps tools
+//! (`get_regional_data`, `get_series_data`, `get_series_group`) — one per library
+//! endpoint, with typed inputs (see [`params`]). The GeoFRED `shapes/file`
+//! endpoint is intentionally library/CLI-only (ADR-0025): a large projected
+//! GeoJSON blob is poor ergonomics for a tool caller.
 //!
 //! Each tool advertises an **output schema** as well as its input schema: the
 //! shape of the structured JSON it returns, derived from the library return type
@@ -35,7 +38,7 @@ use std::sync::Arc;
 use anyhow::Context;
 use chrono::{NaiveDate, NaiveDateTime};
 use ferric_fred::{
-    CategoryId, Client, ReleaseElementId, ReleaseId, SeriesId, SourceId, TagsRequest,
+    CategoryId, Client, ReleaseElementId, ReleaseId, SeriesGroupId, SeriesId, SourceId, TagsRequest,
 };
 use rmcp::handler::server::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
@@ -48,7 +51,10 @@ use schemars::generate::SchemaSettings;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use params::{AggregationArg, FrequencyArg, OrderByArg, SortOrderArg, UnitsArg, UpdatesFilterArg};
+use params::{
+    AggregationArg, FrequencyArg, OrderByArg, RegionTypeArg, SeasonArg, SortOrderArg, UnitsArg,
+    UpdatesFilterArg,
+};
 
 /// Input parameters for the `get_series` tool.
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -375,6 +381,43 @@ struct GetRelatedTagsParams {
 #[derive(Debug, Deserialize, JsonSchema)]
 struct GetSeriesTagsParams {
     /// The FRED series id, e.g. `GNPCA` or `UNRATE`.
+    series_id: String,
+}
+
+/// Input parameters for the `get_regional_data` tool (GeoFRED). FRED requires
+/// every field.
+#[derive(Debug, Deserialize, JsonSchema)]
+struct GetRegionalDataParams {
+    /// The GeoFRED series-group id, e.g. `882`.
+    series_group: String,
+    /// Region granularity to break the data down to.
+    region_type: RegionTypeArg,
+    /// The date to report, `YYYY-MM-DD`.
+    date: String,
+    /// Unit-of-measurement label — free text that FRED echoes into the result
+    /// title (e.g. `Dollars`), not a transformation code.
+    units: String,
+    /// Reporting frequency.
+    frequency: FrequencyArg,
+    /// Seasonal adjustment.
+    season: SeasonArg,
+}
+
+/// Input parameters for the `get_series_data` tool (GeoFRED).
+#[derive(Debug, Deserialize, JsonSchema)]
+struct GetSeriesDataParams {
+    /// A regional FRED series id, e.g. `SMU56000000500000001`.
+    series_id: String,
+    /// Report a single date, `YYYY-MM-DD` (default: the most recent).
+    date: Option<String>,
+    /// Report every date from this one onward, `YYYY-MM-DD`.
+    start_date: Option<String>,
+}
+
+/// Input parameters for the `get_series_group` tool (GeoFRED).
+#[derive(Debug, Deserialize, JsonSchema)]
+struct GetSeriesGroupParams {
+    /// A regional FRED series id, e.g. `SMU56000000500000001`.
     series_id: String,
 }
 
@@ -1571,6 +1614,119 @@ impl FredServer {
             )])),
         }
     }
+
+    #[tool(
+        name = "get_regional_data",
+        description = "GeoFRED / Maps: fetch a region cross-section for a series group — the value \
+                       in every region (state, county, MSA, country, or BEA region) on a given \
+                       date. All arguments are required: series_group id, region_type, date, units \
+                       (a free-text measurement label FRED echoes into the title, e.g. Dollars), \
+                       frequency, and season. Returns the values keyed by date.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        ),
+        output_schema = output_schema_of::<ferric_fred::RegionalData>()
+    )]
+    async fn get_regional_data(
+        &self,
+        Parameters(params): Parameters<GetRegionalDataParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let date = parse_date(&params.date, "date")?;
+        match self
+            .client
+            .regional_data(
+                &SeriesGroupId::new(params.series_group),
+                params.region_type.into(),
+                date,
+                params.units,
+                params.frequency.into(),
+                params.season.into(),
+            )
+            .await
+        {
+            Ok(data) => {
+                let value = serde_json::to_value(&data)
+                    .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+                Ok(CallToolResult::structured(value))
+            }
+            Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(
+                error.to_string(),
+            )])),
+        }
+    }
+
+    #[tool(
+        name = "get_series_data",
+        description = "GeoFRED / Maps: fetch one regional series' values across regions, optionally \
+                       over time. Give a regional series_id; with no date, FRED returns the most \
+                       recent. Set date for a single date, or start_date for every date from then \
+                       on. Returns the values keyed by date.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        ),
+        output_schema = output_schema_of::<ferric_fred::RegionalData>()
+    )]
+    async fn get_series_data(
+        &self,
+        Parameters(params): Parameters<GetSeriesDataParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let mut request = self.client.series_data(&SeriesId::new(params.series_id));
+        if let Some(date) = &params.date {
+            request = request.date(parse_date(date, "date")?);
+        }
+        if let Some(start_date) = &params.start_date {
+            request = request.start_date(parse_date(start_date, "start_date")?);
+        }
+        match request.send().await {
+            Ok(data) => {
+                let value = serde_json::to_value(&data)
+                    .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+                Ok(CallToolResult::structured(value))
+            }
+            Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(
+                error.to_string(),
+            )])),
+        }
+    }
+
+    #[tool(
+        name = "get_series_group",
+        description = "GeoFRED / Maps: fetch the series-group metadata for a regional series — pass \
+                       a regional series_id and get the group it belongs to (title, region type, \
+                       units, frequency, and the span of dates it covers).",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        ),
+        output_schema = output_schema_of::<ferric_fred::SeriesGroup>()
+    )]
+    async fn get_series_group(
+        &self,
+        Parameters(params): Parameters<GetSeriesGroupParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match self
+            .client
+            .series_group(&SeriesId::new(params.series_id))
+            .await
+        {
+            Ok(group) => {
+                let value = serde_json::to_value(&group)
+                    .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+                Ok(CallToolResult::structured(value))
+            }
+            Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(
+                error.to_string(),
+            )])),
+        }
+    }
 }
 
 /// Build a tool's `outputSchema` from the type it structurally returns.
@@ -1676,7 +1832,9 @@ impl ServerHandler for FredServer {
              related_tags variants, the tags co-occurring with a seed set) of one category, \
              release, or series search: get_category_tags, get_category_related_tags, \
              get_release_tags, get_release_related_tags, get_series_search_tags, and \
-             get_series_search_related_tags."
+             get_series_search_related_tags. GeoFRED / Maps tools: get_regional_data (a region \
+             cross-section for a series group on a date), get_series_data (one regional series \
+             across regions, over time), and get_series_group (a regional series' group metadata)."
                 .to_string(),
         );
         info
@@ -1715,7 +1873,7 @@ mod tests {
     #[test]
     fn every_tool_advertises_an_object_output_schema() {
         let tools = FredServer::tool_router().list_all();
-        assert_eq!(tools.len(), 31, "expected all 31 tools to be registered");
+        assert_eq!(tools.len(), 34, "expected all 34 tools to be registered");
         for tool in &tools {
             let schema = tool
                 .output_schema
@@ -1815,6 +1973,32 @@ mod tests {
         let params: CategoryParams =
             serde_json::from_value(serde_json::json!({"category_id": 125})).unwrap();
         assert_eq!(params.category_id, 125);
+    }
+
+    #[test]
+    fn regional_data_params_deserialize_enums_from_fred_codes() {
+        let params: GetRegionalDataParams = serde_json::from_value(serde_json::json!({
+            "series_group": "882",
+            "region_type": "state",
+            "date": "2013-01-01",
+            "units": "Dollars",
+            "frequency": "annual",
+            "season": "NSA"
+        }))
+        .unwrap();
+        assert_eq!(params.series_group, "882");
+        assert!(matches!(params.region_type, RegionTypeArg::State));
+        assert!(matches!(params.frequency, FrequencyArg::Annual));
+        assert!(matches!(params.season, SeasonArg::Nsa));
+    }
+
+    #[test]
+    fn series_data_params_optional_dates_default_to_none() {
+        let params: GetSeriesDataParams =
+            serde_json::from_value(serde_json::json!({"series_id": "SMU56000000500000001"}))
+                .unwrap();
+        assert_eq!(params.series_id, "SMU56000000500000001");
+        assert!(params.date.is_none() && params.start_date.is_none());
     }
 
     #[test]

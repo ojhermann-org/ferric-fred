@@ -9,9 +9,10 @@ that exposes [FRED](https://fred.stlouisfed.org/) (Federal Reserve Economic Data
 to MCP-capable clients over stdio, built on the
 [`ferric-fred`](https://crates.io/crates/ferric-fred) client.
 
-It provides **31 tools** covering all of FRED's read endpoints — searching and
-inspecting series, fetching observations, and browsing categories, releases,
-sources, and tags. Tool results are returned as JSON (MCP structured content),
+It provides **34 tools** covering all of FRED's read endpoints — searching and
+inspecting series, fetching observations, browsing categories, releases,
+sources, and tags, and querying GeoFRED / Maps regional data. Tool results are
+returned as JSON (MCP structured content),
 and every tool declares an input **and output** schema plus behavioural
 annotations (read-only, idempotent, non-destructive, open-world), so a client
 knows a call's shape and effects before making it.
@@ -53,7 +54,7 @@ docker run -i -e FRED_API_KEY=your-fred-api-key ferric-fred-mcp
 
 ## Tools
 
-A few of the 31 tools:
+A few of the 34 tools:
 
 | Tool | Purpose |
 |------|---------|
@@ -63,6 +64,8 @@ A few of the 31 tools:
 | `get_category_series` | The series in a category |
 | `get_release_series` | The series in a release |
 | `get_tags_series` | Series carrying all of a set of tags |
+| `get_regional_data` | GeoFRED: a region cross-section for a series group on a date |
+| `get_series_group` | GeoFRED: a regional series' group metadata |
 
 The full tool list, with parameters, is in the
 [repository README](https://github.com/ojhermann-org/ferric-fred#using-the-mcp-server).

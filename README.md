@@ -47,8 +47,11 @@ FRED's closed value sets, a non-panicking error taxonomy, and **auto-pagination*
 lazily; `--all` on the CLI). See [ADR-0020](docs/adr/0020-auto-pagination.md) and
 [ADR-0021](docs/adr/0021-streaming-pagination.md).
 
-GeoFRED support currently lands at the **library** and **CLI** layers; MCP
-exposure follows in a subsequent slice ([ADR-0013](docs/adr/0013-endpoint-addition-pattern.md)).
+GeoFRED support spans the **library**, **CLI** (`fred geofred`), and **MCP**
+(`get_regional_data`, `get_series_data`, `get_series_group`) layers. The one
+exception is the geographic `shapes/file` endpoint, which is library/CLI-only —
+a large projected-GeoJSON blob is poor ergonomics for an MCP tool caller
+([ADR-0025](docs/adr/0025-geofred-maps-api.md)).
 
 Pick an entry point:
 
@@ -60,7 +63,7 @@ Pick an entry point:
   releases, sources, and tags, and pull **GeoFRED** regional data and map shapes
   (`fred geofred`). See the [crate README](crates/ferric-fred-cli/README.md)
   or `fred <command> --help`.
-- **MCP server** (`fred-mcp`) — `cargo install ferric-fred-mcp`; **31 tools** over
+- **MCP server** (`fred-mcp`) — `cargo install ferric-fred-mcp`; **34 tools** over
   stdio covering the same read surface, for MCP-capable clients ([ADR-0010](docs/adr/0010-mcp-server-design.md)).
   Each tool declares input and output schemas plus behavioural annotations
   ([ADR-0023](docs/adr/0023-mcp-output-schemas.md)). See the
