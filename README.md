@@ -75,6 +75,7 @@ fred updates --start-time 2024-03-01T00:00 --end-time 2024-03-08T00:00  # update
 fred tags --search-text quarterly --limit 5                     # browse/search the tag vocabulary
 fred tags gdp quarterly --limit 5                               # series carrying all these tags
 fred tags gdp --related --limit 5                               # tags that co-occur with gdp
+fred source --all                                              # every page of a list, not just the first
 fred series GNPCA --tags                                         # a series' own tags
 fred series GNPCA --categories                                   # the categories a series is in
 fred series GNPCA --release                                      # the release a series belongs to
@@ -84,9 +85,11 @@ fred series GNPCA --json | jq .frequency                        # JSON output fo
 
 Add `--json` to any data command (`search`, `series`, `observations`) for
 machine-readable output — each emits its domain type as JSON (`chart` ignores
-it). `fred chart` opens an interactive [ratatui](https://ratatui.rs/) line chart
-of a series' observations (it accepts the same flags as `observations`); press
-`q`, `Esc`, or `Ctrl-C` to quit.
+it). Add `--all` to any list view to page it to exhaustion instead of returning
+just the first page; `--limit` then caps the total (mind FRED's rate limits on
+large lists). `fred chart` opens an interactive [ratatui](https://ratatui.rs/)
+line chart of a series' observations (it accepts the same flags as
+`observations`); press `q`, `Esc`, or `Ctrl-C` to quit.
 
 Install it with `cargo install ferric-fred-cli` (which provides the `fred`
 binary), or run it from the workspace with `cargo run -p ferric-fred-cli --
