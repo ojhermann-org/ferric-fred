@@ -200,6 +200,12 @@ struct GetReleaseTablesParams {
     /// Return only the subtree rooted at this element id (omit for the whole
     /// tree).
     element_id: Option<u32>,
+    /// Fold each series row's observation value into the tree (structure-only
+    /// otherwise). FRED returns its latest value unless `observation_date` is set.
+    include_observation_values: Option<bool>,
+    /// Observation value as of this date, `YYYY-MM-DD`. Implies
+    /// `include_observation_values`.
+    observation_date: Option<String>,
 }
 
 /// Input parameters for the `get_category_tags` tool.
@@ -980,8 +986,10 @@ impl FredServer {
         name = "get_release_tables",
         description = "Fetch a FRED release's table tree — the nested layout (sections, tables, and \
                        the series rows beneath them) it uses to present its series. Optionally \
-                       scope to the subtree rooted at one element id. Returns the tree as \
-                       structured JSON, with each element's children nested under it.",
+                       scope to the subtree rooted at one element id, and optionally fold each \
+                       series row's observation value (at observation_date, or FRED's latest) into \
+                       the tree via include_observation_values. Returns the tree as structured \
+                       JSON, with each element's children nested under it.",
         annotations(
             read_only_hint = true,
             destructive_hint = false,
@@ -999,6 +1007,12 @@ impl FredServer {
             .release_tables(ReleaseId::new(params.release_id));
         if let Some(element_id) = params.element_id {
             request = request.element(ReleaseElementId::new(element_id));
+        }
+        if params.include_observation_values == Some(true) {
+            request = request.include_observation_values(true);
+        }
+        if let Some(date) = &params.observation_date {
+            request = request.observation_date(parse_date(date, "observation_date")?);
         }
 
         match request.send().await {
@@ -1787,6 +1801,17 @@ mod tests {
             serde_json::from_value(serde_json::json!({"release_id": 10})).unwrap();
         assert_eq!(whole.release_id, 10);
         assert!(whole.element_id.is_none());
+        assert!(whole.include_observation_values.is_none());
+        assert!(whole.observation_date.is_none());
+
+        let with_values: GetReleaseTablesParams = serde_json::from_value(serde_json::json!({
+            "release_id": 10,
+            "include_observation_values": true,
+            "observation_date": "2023-06-01"
+        }))
+        .unwrap();
+        assert_eq!(with_values.include_observation_values, Some(true));
+        assert_eq!(with_values.observation_date.as_deref(), Some("2023-06-01"));
     }
 
     #[test]

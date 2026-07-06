@@ -116,7 +116,8 @@ a non-issue for JSON output, and the `Parameters` struct stays flat, so
 fields they add) are a distinct, value-shaped dimension whose exact response
 shape needs live confirmation; folding it in is a documented follow-up once the
 base tree lands and we can inspect a real payload. The structural tree is
-independently useful and keeps this slice bounded and verifiable.
+independently useful and keeps this slice bounded and verifiable. *(This
+follow-up is now done — see the Update below.)*
 
 **Testing** follows [ADR-0011](0011-testing-strategy.md): a `wiremock` fixture
 with a 2–3-level nested tree asserting the recursion deserializes and children
@@ -169,3 +170,40 @@ list, CLI examples, and MCP tool table gain the new entry, as every slice does.
 - **Skip the CLI tree rendering and expose `--tables` as JSON-only.** Rejected:
   every other endpoint renders as readable text by default; an indented tree is
   the consistent choice, and `--json` remains for machine use.
+
+## Update (2026-07-06): observation values folded in (#9)
+
+The deferred value dimension is now implemented, closing the scope boundary
+above. A live probe of `fred/release/tables?include_observation_values=true`
+settled the response shape the ADR wanted confirmed: each **`series`** element
+gains exactly two fields — `observation_value` (FRED's stringly-typed value, with
+the same `"."`-means-missing sentinel as `Observation`) and `observation_date`
+(a **frequency-formatted display string**, e.g. `"Jun 2023"` or `"2023"` — *not*
+an ISO date, unlike the request parameter of the same name). Structural
+(non-series) elements carry neither, and neither field is present at all when
+values weren't requested.
+
+The vertical slice, mirroring the original:
+
+- **Library** — `ReleaseTableElement` gains `observation_value: Option<f64>`
+  (parsed like [`Observation`], `"."`/absent → `None`) and
+  `observation_date: Option<String>` (kept as FRED's formatted string for
+  fidelity, consistent with `line`/`level`). Both are `#[serde(default)]` so the
+  structure-only shape still deserializes unchanged. `ReleaseTablesRequest` gains
+  `.include_observation_values(bool)` and `.observation_date(NaiveDate)` (the
+  latter implies the former, since a date is meaningless without values).
+- **`Eq` dropped** from `ReleaseTable`/`ReleaseTableElement`: an `f64` value is
+  only `PartialEq`, exactly as `Observation` already is. A small, expected
+  narrowing of the derive surface.
+- **CLI** — `fred release <id> --tables` gains `--observation-values` and
+  `--observation-date <YYYY-MM-DD>`; the tree renderer appends ` = <value>
+  [<date>]` to series rows that carry a value.
+- **MCP** — `get_release_tables` gains `include_observation_values` and
+  `observation_date` params; the values flow into the structured output, and
+  (via the schemars work in [ADR-0023](0023-mcp-output-schemas.md)) the tool's
+  output schema now advertises the two new fields automatically.
+
+Live-verified across all three layers against release 10 (CPI). This brings the
+endpoint to full parity with FRED's `release/tables` surface.
+
+[`Observation`]: ../../crates/ferric-fred/src/observation.rs

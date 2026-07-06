@@ -36,7 +36,8 @@ managed on top; see the ADRs).
 ## What it covers
 
 The library wraps **all of FRED's read endpoints** — series and observations,
-search, categories, releases (including the nested release-table tree), sources,
+search, categories, releases (including the nested release-table tree, with
+optional inline observation values), sources,
 and tags — behind ergonomic builders, with newtype identifiers, typed enums for
 FRED's closed value sets, a non-panicking error taxonomy, and **auto-pagination**
 (`Paginate::send_all` walks an endpoint to exhaustion, `Paginate::stream` yields

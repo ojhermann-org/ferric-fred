@@ -15,7 +15,10 @@ use crate::{ReleaseElementId, ReleaseId, SeriesId};
 /// its own id). `name` and `element_id` are present only when a subtree was
 /// requested (see [`ReleaseTablesRequest::element`](crate::ReleaseTablesRequest::element));
 /// for a whole-release request they are absent.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+// `Eq` is intentionally omitted: `ReleaseTableElement` carries an `f64`
+// observation value (which is only `PartialEq`), so the tree is `PartialEq` only,
+// mirroring [`Observation`](crate::Observation).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ReleaseTable {
     /// The name of the requested element, when a subtree was requested.
@@ -42,7 +45,9 @@ pub struct ReleaseTable {
 
 /// A node in a release's table tree: a section, a table, or a series row. Nodes
 /// nest via [`children`](ReleaseTableElement::children) to arbitrary depth.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+// `Eq` is intentionally omitted — `observation_value: Option<f64>` is `PartialEq`
+// only; see the note on [`ReleaseTable`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ReleaseTableElement {
     /// This element's id.
@@ -76,6 +81,23 @@ pub struct ReleaseTableElement {
     /// nesting of [`children`](ReleaseTableElement::children).
     pub level: String,
 
+    /// The element's observation value at the request's `observation_date` (or
+    /// FRED's latest), present only when the request set
+    /// [`include_observation_values`](crate::ReleaseTablesRequest::include_observation_values).
+    /// `None` for a structural (non-`series`) element, when values weren't
+    /// requested, or when FRED reports the value as missing (`"."`) — mirroring
+    /// [`Observation`](crate::Observation)'s value handling.
+    #[serde(default, deserialize_with = "deserialize_optional_value")]
+    pub observation_value: Option<f64>,
+
+    /// FRED's formatted label for the [`observation_value`](ReleaseTableElement::observation_value)
+    /// date, e.g. `"Jun 2023"` or `"2023"` — a display string keyed to the
+    /// series' frequency, **not** an ISO date (unlike the request's
+    /// `observation_date`). `None` when values weren't requested or the element
+    /// carries no series.
+    #[serde(default)]
+    pub observation_date: Option<String>,
+
     /// The child elements nested beneath this one (empty for a leaf).
     #[serde(default)]
     pub children: Vec<ReleaseTableElement>,
@@ -104,6 +126,24 @@ where
 {
     let raw: Option<String> = Option::deserialize(deserializer)?;
     Ok(raw.filter(|id| !id.is_empty()).map(SeriesId::new))
+}
+
+/// Deserialize a release-table element's `observation_value`: `"."` → `None`,
+/// otherwise parse the string as `f64`. Mirrors [`Observation`](crate::Observation)'s
+/// value handling; paired with `#[serde(default)]`, so an absent field — values
+/// not requested, or a structural element — also yields `None`. A present,
+/// non-`"."` value that fails to parse is an error, not a silent `None`.
+fn deserialize_optional_value<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let raw = String::deserialize(deserializer)?;
+    if raw == "." {
+        return Ok(None);
+    }
+    raw.parse::<f64>()
+        .map(Some)
+        .map_err(serde::de::Error::custom)
 }
 
 #[cfg(test)]
@@ -166,6 +206,62 @@ mod tests {
         assert_eq!(leaf.series_id, Some(SeriesId::new("CPIFABSL")));
         assert_eq!(leaf.element_type, "series");
         assert!(leaf.children.is_empty());
+    }
+
+    #[test]
+    fn observation_values_deserialize_when_present() {
+        // Mirrors the live `include_observation_values=true` shape: series rows
+        // carry `observation_value` (a stringly-typed number, or "." for
+        // missing) and a frequency-formatted `observation_date`; structural
+        // elements carry neither.
+        let body = r#"{
+            "release_id": "10",
+            "elements": {
+                "36714": {
+                    "element_id": 36714, "release_id": 10, "type": "table",
+                    "name": "Monthly, Seasonally Adjusted", "level": "0",
+                    "children": [
+                        {
+                            "element_id": 36715, "release_id": 10, "parent_id": 36714,
+                            "series_id": "CUSR0000SA0L5", "type": "series",
+                            "name": "All items less medical care", "level": "1",
+                            "observation_value": "292.260", "observation_date": "Jun 2023",
+                            "children": []
+                        },
+                        {
+                            "element_id": 36716, "release_id": 10, "parent_id": 36714,
+                            "series_id": "CPILEGSL", "type": "series", "name": "Missing",
+                            "level": "1",
+                            "observation_value": ".", "observation_date": "Jun 2023",
+                            "children": []
+                        }
+                    ]
+                }
+            }
+        }"#;
+        let table: ReleaseTable = serde_json::from_str(body).unwrap();
+        let table_elem = &table.roots[0];
+        // Structural element: no value, no date.
+        assert_eq!(table_elem.observation_value, None);
+        assert_eq!(table_elem.observation_date, None);
+
+        let with_value = &table_elem.children[0];
+        assert_eq!(with_value.observation_value, Some(292.260));
+        assert_eq!(with_value.observation_date.as_deref(), Some("Jun 2023"));
+
+        // FRED's "." sentinel maps to a missing value, not a parse error.
+        let missing = &table_elem.children[1];
+        assert_eq!(missing.observation_value, None);
+        assert_eq!(missing.observation_date.as_deref(), Some("Jun 2023"));
+    }
+
+    #[test]
+    fn observation_values_absent_when_not_requested() {
+        // The base (structure-only) shape has no value/date fields at all.
+        let table: ReleaseTable = serde_json::from_str(TABLE_BODY).unwrap();
+        let leaf = &table.roots[0].children[0].children[0];
+        assert_eq!(leaf.observation_value, None);
+        assert_eq!(leaf.observation_date, None);
     }
 
     #[test]

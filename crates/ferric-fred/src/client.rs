@@ -1969,6 +1969,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn release_tables_observation_values_reach_wire_and_parse() {
+        let server = MockServer::start().await;
+        // `.observation_date(..)` must send both `observation_date` (ISO) and
+        // `include_observation_values=true`, and the per-element value/date
+        // fields must deserialize onto the returned series row.
+        Mock::given(method("GET"))
+            .and(path("/release/tables"))
+            .and(query_param("release_id", "10"))
+            .and(query_param("include_observation_values", "true"))
+            .and(query_param("observation_date", "2023-06-01"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"release_id":"10","elements":{
+                    "36715":{"element_id":36715,"release_id":10,"parent_id":36714,
+                        "series_id":"CUSR0000SA0L5","type":"series","name":"All items",
+                        "level":"1","observation_value":"292.260","observation_date":"Jun 2023",
+                        "children":[]}
+                }}"#,
+            ))
+            .mount(&server)
+            .await;
+
+        let table = client_for(&server)
+            .release_tables(ReleaseId::new(10))
+            .observation_date(chrono::NaiveDate::from_ymd_opt(2023, 6, 1).unwrap())
+            .send()
+            .await
+            .expect("release/tables with values parse");
+        let row = &table.roots[0];
+        assert_eq!(row.observation_value, Some(292.260));
+        assert_eq!(row.observation_date.as_deref(), Some("Jun 2023"));
+    }
+
+    #[tokio::test]
     async fn series_categories_parse() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))

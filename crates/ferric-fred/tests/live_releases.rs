@@ -1,7 +1,8 @@
 //! Live tests for the release endpoints; hit the real FRED API and require
 //! `FRED_API_KEY`. Run with `--run-ignored all` (nextest) inside the dev shell.
 
-use ferric_fred::{Client, ReleaseId};
+use chrono::NaiveDate;
+use ferric_fred::{Client, ReleaseElementId, ReleaseId};
 
 #[tokio::test]
 #[ignore = "hits the live FRED API; requires FRED_API_KEY"]
@@ -95,4 +96,47 @@ async fn release_tables_tree_and_subtree() {
         .await
         .expect("release/tables subtree");
     assert_eq!(subtree.element_id, Some(root_id));
+}
+
+#[tokio::test]
+#[ignore = "hits the live FRED API; requires FRED_API_KEY"]
+async fn release_tables_observation_values_surface() {
+    let client = Client::from_env().expect("FRED_API_KEY set");
+    let date = NaiveDate::from_ymd_opt(2023, 6, 1).unwrap();
+
+    // FRED returns one level of children per request for this release, so walk
+    // down by element_id — carrying observation values the whole way — until a
+    // `series` row surfaces its value. This both proves the request params reach
+    // the wire and pins the response field names/format against API drift.
+    let roots = client
+        .release_tables(ReleaseId::new(10))
+        .observation_date(date)
+        .send()
+        .await
+        .expect("release/tables with values")
+        .roots;
+
+    // Depth-first drill with a bounded request budget; stops at the first value.
+    let mut frontier: Vec<ReleaseElementId> = roots.iter().map(|e| e.element_id).collect();
+    let mut value: Option<f64> = roots.iter().find_map(|e| e.observation_value);
+    let mut budget = 24;
+    while value.is_none() && budget > 0 {
+        let Some(element_id) = frontier.pop() else {
+            break;
+        };
+        budget -= 1;
+        let children = client
+            .release_tables(ReleaseId::new(10))
+            .element(element_id)
+            .observation_date(date)
+            .send()
+            .await
+            .expect("release/tables subtree with values")
+            .roots;
+        value = children.iter().find_map(|e| e.observation_value);
+        frontier.extend(children.iter().map(|e| e.element_id));
+    }
+
+    let value = value.expect("a series element should carry an observation value");
+    assert!(value.is_finite());
 }
