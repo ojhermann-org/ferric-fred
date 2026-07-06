@@ -16,6 +16,7 @@ use std::future::Future;
 use std::time::Duration;
 
 use chrono::NaiveDate;
+use futures_core::Stream;
 
 use crate::{
     Error, Release, ReleaseDate, ReleaseDatesResults, ReleasesResults, Result, Series,
@@ -105,6 +106,39 @@ pub trait Paginate: Clone + Send + Sized + sealed::Sealed {
     fn send_all(self) -> impl Future<Output = Result<Vec<<Self::Page as Page>::Item>>> + Send {
         collect_all(self)
     }
+
+    /// Stream every result across all pages, lazily — items are yielded as they
+    /// arrive, and the next page is fetched only once the current one is drained.
+    ///
+    /// Same paging semantics as [`send_all`](Paginate::send_all) (a builder
+    /// `limit` is a ceiling, `offset` is the start), but a `Stream` rather than a
+    /// materialized `Vec`: memory stays flat regardless of the total, a consumer
+    /// can stop early, and each item is a `Result` — a mid-stream error is
+    /// surfaced as an `Err` item and ends the stream, so results retrieved before
+    /// it aren't lost. On a `429` the same bounded retry as `send_all` applies.
+    ///
+    /// Drive it with [`StreamExt`](https://docs.rs/futures/latest/futures/stream/trait.StreamExt.html)
+    /// from the `futures` crate. The returned stream is `!Unpin`, so to consume it
+    /// with `.next()` in a loop, pin it first (`pin_mut!`); the by-value
+    /// combinators like `try_collect` / `for_each` need no pinning.
+    ///
+    /// ```no_run
+    /// # async fn run(client: &ferric_fred::Client) -> ferric_fred::Result<()> {
+    /// use ferric_fred::Paginate;
+    /// use futures_util::{pin_mut, StreamExt};
+    ///
+    /// let series = client.search("gdp").stream();
+    /// pin_mut!(series);
+    /// while let Some(item) = series.next().await {
+    ///     let series = item?;
+    ///     println!("{}", series.id);
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    fn stream(self) -> impl Stream<Item = Result<<Self::Page as Page>::Item>> + Send {
+        stream_pages(self)
+    }
 }
 
 /// Maximum number of retries for a single page when FRED returns `429`.
@@ -147,6 +181,54 @@ async fn collect_all<P: Paginate>(request: P) -> Result<Vec<<P::Page as Page>::I
         collected.truncate(cap as usize);
     }
     Ok(collected)
+}
+
+/// Stream every page of `request`, one item at a time; see [`Paginate::stream`].
+///
+/// A page is fetched only when the previous one has been fully yielded, so at
+/// most one page is held in memory at a time. An error ends the stream after
+/// surfacing it as an `Err` item.
+fn stream_pages<P: Paginate>(
+    request: P,
+) -> impl Stream<Item = Result<<P::Page as Page>::Item>> + Send {
+    async_stream::try_stream! {
+        let ceiling = request.requested_limit();
+        let mut offset = request.requested_offset().unwrap_or(0);
+        let mut yielded: u32 = 0;
+
+        loop {
+            let page_size = match ceiling {
+                Some(cap) => {
+                    let remaining = cap.saturating_sub(yielded);
+                    if remaining == 0 {
+                        break;
+                    }
+                    remaining.min(P::MAX_PAGE)
+                }
+                None => P::MAX_PAGE,
+            };
+
+            let page = send_page_with_retry(request.clone().with_paging(page_size, offset)).await?;
+            let total = page.total();
+            let got = page.items_len() as u32;
+            if got == 0 {
+                break;
+            }
+
+            for item in page.into_items() {
+                yield item;
+                yielded += 1;
+                if ceiling.is_some_and(|cap| yielded >= cap) {
+                    break;
+                }
+            }
+
+            offset = offset.saturating_add(got);
+            if offset >= total || ceiling.is_some_and(|cap| yielded >= cap) {
+                break;
+            }
+        }
+    }
 }
 
 /// Send one page, retrying on `429` up to [`MAX_RETRIES`] times — waiting FRED's
