@@ -8,7 +8,7 @@ Federal Reserve Economic Data service from the Federal Reserve Bank of St. Louis
 
 ## Workspace layout
 
-This is a Cargo workspace. Planned crates:
+This is a Cargo workspace. Its three crates:
 
 | Crate | Kind | Purpose |
 |-------|------|---------|
@@ -23,8 +23,9 @@ are managed on top of that (see the ADRs).
 
 ## Status
 
-`0.1.0` is published to [crates.io](https://crates.io/crates/ferric-fred). The
-library covers the `series` endpoints (`series`,
+`0.3.1` of all three crates is published to
+[crates.io](https://crates.io/crates/ferric-fred). The library covers the
+`series` endpoints (`series`,
 `series/observations`, `series/search`, `series/search/tags`,
 `series/search/related_tags`, `series/updates`, `series/vintagedates`,
 `series/categories`, `series/release`, `series/tags`), `category` (`category`,
@@ -38,7 +39,9 @@ the `fred` CLI (this repo's first consumer) can search, show series metadata,
 print observations, chart them in an interactive terminal UI, browse the
 category tree, releases, and sources, and filter series by tags (with
 related-tag discovery). The `fred-mcp` server (ADR-0010) speaks MCP over stdio
-with the corresponding tools.
+with the corresponding tools. Paginated endpoints can be walked to exhaustion or
+streamed lazily — `Paginate::send_all` / `Paginate::stream` in the library
+(ADR-0020, ADR-0021), and `--all` on the CLI.
 
 ## Using the CLI
 
