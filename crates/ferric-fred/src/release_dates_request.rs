@@ -115,3 +115,21 @@ impl<'a> ReleaseDatesRequest<'a> {
         params
     }
 }
+
+impl crate::paginate::sealed::Sealed for ReleaseDatesRequest<'_> {}
+impl crate::paginate::Paginate for ReleaseDatesRequest<'_> {
+    type Page = ReleaseDatesResults;
+    const MAX_PAGE: u32 = 10_000;
+    fn requested_limit(&self) -> Option<u32> {
+        self.limit
+    }
+    fn requested_offset(&self) -> Option<u32> {
+        self.offset
+    }
+    fn with_paging(self, limit: u32, offset: u32) -> Self {
+        self.limit(limit).offset(offset)
+    }
+    fn send_page(self) -> impl std::future::Future<Output = Result<Self::Page>> + Send {
+        self.send()
+    }
+}

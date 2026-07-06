@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 
@@ -861,10 +863,12 @@ impl Client {
             .await?;
 
         let status = response.status();
+        // Read `Retry-After` before consuming the response into its body.
+        let retry_after = parse_retry_after(response.headers());
         let body = response.bytes().await?;
 
         if !status.is_success() {
-            return Err(api_error(status, &body));
+            return Err(api_error(status, retry_after, &body));
         }
 
         serde_json::from_slice(&body).map_err(Error::from)
@@ -886,8 +890,9 @@ where
 }
 
 /// Build an [`Error`] from a non-success FRED response, decoding FRED's error
-/// body (`{"error_code": N, "error_message": "..."}`) when present.
-fn api_error(status: reqwest::StatusCode, body: &[u8]) -> Error {
+/// body (`{"error_code": N, "error_message": "..."}`) when present. `retry_after`
+/// is the parsed `Retry-After` header, carried through on a `429`.
+fn api_error(status: reqwest::StatusCode, retry_after: Option<Duration>, body: &[u8]) -> Error {
     let fred: Option<FredErrorBody> = serde_json::from_slice(body).ok();
     let code = fred.as_ref().and_then(|e| e.error_code);
     let message = fred.and_then(|e| e.error_message).unwrap_or_else(|| {
@@ -898,7 +903,7 @@ fn api_error(status: reqwest::StatusCode, body: &[u8]) -> Error {
     });
 
     if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
-        return Error::RateLimited { retry_after: None };
+        return Error::RateLimited { retry_after };
     }
 
     Error::Api {
@@ -906,6 +911,20 @@ fn api_error(status: reqwest::StatusCode, body: &[u8]) -> Error {
         code,
         message,
     }
+}
+
+/// Parse a `Retry-After` header, if present, as a whole number of seconds
+/// (FRED's form). The HTTP-date form is not used by FRED and is treated as
+/// absent.
+fn parse_retry_after(headers: &reqwest::header::HeaderMap) -> Option<Duration> {
+    let seconds: u64 = headers
+        .get(reqwest::header::RETRY_AFTER)?
+        .to_str()
+        .ok()?
+        .trim()
+        .parse()
+        .ok()?;
+    Some(Duration::from_secs(seconds))
 }
 
 /// The `series/observations` response envelope. Metadata fields (realtime range,
@@ -954,9 +973,11 @@ struct FredErrorBody {
 #[cfg(test)]
 mod tests {
     use super::Client;
+    use std::time::Duration;
+
     use crate::{
-        CategoryId, Error, Frequency, OrderBy, ReleaseElementId, ReleaseId, SeasonalAdjustment,
-        SeriesId, SortOrder, SourceId, Units, UpdatesFilter,
+        CategoryId, Error, Frequency, OrderBy, Paginate, ReleaseElementId, ReleaseId,
+        SeasonalAdjustment, SeriesId, SortOrder, SourceId, Units, UpdatesFilter,
     };
     use wiremock::matchers::{method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -1090,6 +1111,129 @@ mod tests {
             .await
             .expect_err("a 429 should be rate-limited");
         assert!(matches!(error, Error::RateLimited { .. }), "got {error:?}");
+    }
+
+    #[tokio::test]
+    async fn rate_limited_carries_retry_after_seconds() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/series"))
+            .respond_with(ResponseTemplate::new(429).insert_header("retry-after", "120"))
+            .mount(&server)
+            .await;
+
+        let error = client_for(&server)
+            .series(&SeriesId::new("GNPCA"))
+            .await
+            .expect_err("a 429 should be rate-limited");
+        match error {
+            Error::RateLimited { retry_after } => {
+                assert_eq!(retry_after, Some(Duration::from_secs(120)));
+            }
+            other => panic!("expected Error::RateLimited, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn send_all_walks_every_page() {
+        let server = MockServer::start().await;
+        // First page (offset 0) reports a total of 3 and returns 2 sources; the
+        // second page (offset 2) returns the last one. `send_all` should stitch
+        // the two into one Vec and stop once it has walked past `count`.
+        Mock::given(method("GET"))
+            .and(path("/sources"))
+            .and(query_param("offset", "0"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"count":3,"offset":0,"limit":1000,"sources":[
+                    {"id":1,"name":"Source One"},
+                    {"id":2,"name":"Source Two"}
+                ]}"#,
+            ))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/sources"))
+            .and(query_param("offset", "2"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"count":3,"offset":2,"limit":1000,"sources":[
+                    {"id":3,"name":"Source Three"}
+                ]}"#,
+            ))
+            .mount(&server)
+            .await;
+
+        let sources = client_for(&server)
+            .sources()
+            .send_all()
+            .await
+            .expect("send_all walks both pages");
+        let ids: Vec<_> = sources.iter().map(|s| s.id).collect();
+        assert_eq!(
+            ids,
+            vec![SourceId::new(1), SourceId::new(2), SourceId::new(3)]
+        );
+    }
+
+    #[tokio::test]
+    async fn send_all_treats_limit_as_a_ceiling() {
+        let server = MockServer::start().await;
+        // Only an offset-0 page is mocked, and only for a limit of 2. `count` is
+        // 5, but a `.limit(2)` ceiling must stop `send_all` after one request of
+        // exactly two — a second page request would 404 and fail the test.
+        Mock::given(method("GET"))
+            .and(path("/sources"))
+            .and(query_param("offset", "0"))
+            .and(query_param("limit", "2"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"count":5,"offset":0,"limit":2,"sources":[
+                    {"id":1,"name":"Source One"},
+                    {"id":2,"name":"Source Two"}
+                ]}"#,
+            ))
+            .mount(&server)
+            .await;
+
+        let sources = client_for(&server)
+            .sources()
+            .limit(2)
+            .send_all()
+            .await
+            .expect("send_all stops at the ceiling");
+        let ids: Vec<_> = sources.iter().map(|s| s.id).collect();
+        assert_eq!(ids, vec![SourceId::new(1), SourceId::new(2)]);
+    }
+
+    #[tokio::test]
+    async fn send_all_retries_after_a_429() {
+        let server = MockServer::start().await;
+        // The first request is rate-limited with `Retry-After: 0` (so the retry
+        // sleeps for no real time); the retry then succeeds. Priority + a
+        // one-shot cap make the 429 fire first, then fall through to the 200.
+        Mock::given(method("GET"))
+            .and(path("/sources"))
+            .respond_with(ResponseTemplate::new(429).insert_header("retry-after", "0"))
+            .up_to_n_times(1)
+            .with_priority(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/sources"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"count":1,"offset":0,"limit":1000,"sources":[
+                    {"id":1,"name":"Source One"}
+                ]}"#,
+            ))
+            .with_priority(2)
+            .mount(&server)
+            .await;
+
+        let sources = client_for(&server)
+            .sources()
+            .send_all()
+            .await
+            .expect("send_all retries the 429 and then succeeds");
+        assert_eq!(sources.len(), 1);
+        assert_eq!(sources[0].id, SourceId::new(1));
     }
 
     #[tokio::test]

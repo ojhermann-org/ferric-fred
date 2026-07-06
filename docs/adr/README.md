@@ -28,6 +28,7 @@ use them, and [`0000-adr-template.md`](0000-adr-template.md) for the template.
 | [0017](0017-release-tables-tree.md) | Modelling `release/tables` (the recursive table tree) | Accepted |
 | [0018](0018-release-secret-via-infisical.md) | Route the crates.io token through Infisical | Accepted |
 | [0019](0019-series-updates-time-window.md) | series/updates time window (non-ISO timestamps) | Accepted |
+| [0020](0020-auto-pagination.md) | Auto-pagination (`Paginate` trait + `send_all`) | Accepted |
 
 ## Backlog (proposed, not yet written)
 
