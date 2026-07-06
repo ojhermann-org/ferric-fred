@@ -1,18 +1,25 @@
 use std::time::Duration;
 
+use chrono::NaiveDate;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 
 use crate::{
-    Category, CategoryId, Error, Observation, ObservationsRequest, Release, ReleaseDatesRequest,
-    ReleaseDatesResults, ReleaseId, ReleaseTable, ReleaseTablesRequest, ReleasesRequest,
-    ReleasesResults, Result, Series, SeriesId, SeriesListRequest, SeriesSearchRequest,
-    SeriesSearchResults, SeriesUpdatesRequest, Source, SourceId, SourcesRequest, SourcesResults,
-    TagsRequest, TagsResults, VintageDates, VintageDatesRequest,
+    Category, CategoryId, Error, Frequency, Observation, ObservationsRequest, RegionType,
+    RegionalData, Release, ReleaseDatesRequest, ReleaseDatesResults, ReleaseId, ReleaseTable,
+    ReleaseTablesRequest, ReleasesRequest, ReleasesResults, Result, SeasonalAdjustment, Series,
+    SeriesDataRequest, SeriesGroup, SeriesGroupId, SeriesId, SeriesListRequest,
+    SeriesSearchRequest, SeriesSearchResults, SeriesUpdatesRequest, ShapeFile, ShapeType, Source,
+    SourceId, SourcesRequest, SourcesResults, TagsRequest, TagsResults, VintageDates,
+    VintageDatesRequest,
 };
 
 /// Base URL for the FRED REST API.
 const FRED_BASE_URL: &str = "https://api.stlouisfed.org/fred";
+
+/// Base URL for the GeoFRED / Maps API — a separate surface on the same host,
+/// under `/geofred` instead of `/fred` (ADR-0025).
+const GEOFRED_BASE_URL: &str = "https://api.stlouisfed.org/geofred";
 
 /// An async client for the FRED API.
 ///
@@ -23,6 +30,7 @@ pub struct Client {
     http: reqwest::Client,
     api_key: String,
     base_url: String,
+    geofred_base_url: String,
 }
 
 impl Client {
@@ -37,6 +45,7 @@ impl Client {
             http,
             api_key: api_key.into(),
             base_url: FRED_BASE_URL.to_owned(),
+            geofred_base_url: GEOFRED_BASE_URL.to_owned(),
         })
     }
 
@@ -47,10 +56,14 @@ impl Client {
         api_key: impl Into<String>,
         base_url: impl Into<String>,
     ) -> Result<Self> {
+        // Point both the core and GeoFRED bases at the same mock so path-only
+        // matching works for either surface (ADR-0025).
+        let base_url = base_url.into();
         Ok(Self {
             http: reqwest::Client::builder().build()?,
             api_key: api_key.into(),
-            base_url: base_url.into(),
+            geofred_base_url: base_url.clone(),
+            base_url,
         })
     }
 
@@ -841,12 +854,154 @@ impl Client {
         ReleasesRequest::with_source(self, "/source/releases", source_id.get().to_string())
     }
 
-    /// GET `path` with `params` plus `api_key`/`file_type`, then deserialize the
-    /// JSON body as `T`. A non-success status becomes [`Error::Api`] (or
-    /// [`Error::RateLimited`]); a body that doesn't match `T` becomes
-    /// [`Error::Deserialize`].
+    // --- GeoFRED / Maps API (ADR-0025) ---------------------------------------
+
+    /// Fetch a region cross-section for a series group (the GeoFRED
+    /// `geofred/regional/data` endpoint) — the value in every region of
+    /// `region_type` on `date`, for the given `units` label,
+    /// `frequency`, and `season`.
+    ///
+    /// FRED requires **all** of these parameters (a live probe rejects any
+    /// omission — ADR-0025), so this is a direct call rather than a builder.
+    /// `units` is a free-form measurement label FRED echoes into the result
+    /// title (e.g. `"Dollars"`), not a transformation code.
+    ///
+    /// ```no_run
+    /// # async fn run(client: &ferric_fred::Client) -> ferric_fred::Result<()> {
+    /// use ferric_fred::{Frequency, RegionType, SeasonalAdjustment, SeriesGroupId};
+    /// let date = chrono::NaiveDate::from_ymd_opt(2013, 1, 1).unwrap();
+    /// let data = client
+    ///     .regional_data(
+    ///         &SeriesGroupId::new("882"),
+    ///         RegionType::State,
+    ///         date,
+    ///         "Dollars",
+    ///         Frequency::Annual,
+    ///         SeasonalAdjustment::NotSeasonallyAdjusted,
+    ///     )
+    ///     .await?;
+    /// println!("{}", data.meta.title);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails to send, FRED returns a non-success
+    /// status, or the response body cannot be deserialized.
+    pub async fn regional_data(
+        &self,
+        series_group: &SeriesGroupId,
+        region_type: RegionType,
+        date: NaiveDate,
+        units: impl Into<String>,
+        frequency: Frequency,
+        season: SeasonalAdjustment,
+    ) -> Result<RegionalData> {
+        self.get_geofred(
+            "/regional/data",
+            &[
+                ("series_group", series_group.as_str().to_owned()),
+                ("region_type", region_type.query_code().to_owned()),
+                ("date", date.to_string()),
+                ("units", units.into()),
+                ("frequency", frequency.query_code().to_owned()),
+                ("season", season.query_code().to_owned()),
+            ],
+        )
+        .await
+    }
+
+    /// Begin a request for one regional series' values across regions (the
+    /// GeoFRED `geofred/series/data` endpoint).
+    ///
+    /// Returns a builder; set an optional [`date`](SeriesDataRequest::date) or
+    /// [`start_date`](SeriesDataRequest::start_date) and call
+    /// [`send`](SeriesDataRequest::send). With neither set, FRED returns the most
+    /// recent date.
+    ///
+    /// ```no_run
+    /// # async fn run(client: &ferric_fred::Client) -> ferric_fred::Result<()> {
+    /// use ferric_fred::SeriesId;
+    /// let data = client
+    ///     .series_data(&SeriesId::new("SMU56000000500000001"))
+    ///     .send()
+    ///     .await?;
+    /// println!("{} dates", data.meta.data.len());
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn series_data(&self, series_id: &SeriesId) -> SeriesDataRequest<'_> {
+        SeriesDataRequest::new(self, series_id.clone())
+    }
+
+    /// Run a GeoFRED series/data request (invoked by
+    /// [`SeriesDataRequest::send`]).
+    pub(crate) async fn execute_series_data(
+        &self,
+        request: &SeriesDataRequest<'_>,
+    ) -> Result<RegionalData> {
+        self.get_geofred("/series/data", &request.query_params())
+            .await
+    }
+
+    /// Fetch the series-group metadata for a regional series (the GeoFRED
+    /// `geofred/series/group` endpoint) — pass a regional `series_id` and get
+    /// back the group it belongs to (title, region type, date span).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails to send, FRED returns a non-success
+    /// status, or the response body cannot be deserialized.
+    pub async fn series_group(&self, series_id: &SeriesId) -> Result<SeriesGroup> {
+        let response: SeriesGroupResponse = self
+            .get_geofred(
+                "/series/group",
+                &[("series_id", series_id.as_str().to_owned())],
+            )
+            .await?;
+        Ok(response.series_group)
+    }
+
+    /// Fetch the region boundary polygons for a shape type (the GeoFRED
+    /// `geofred/shapes/file` endpoint) — a GeoJSON [`ShapeFile`] this crate
+    /// transports without interpreting (ADR-0025).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails to send, FRED returns a non-success
+    /// status, or the response body cannot be deserialized.
+    pub async fn shape_file(&self, shape: ShapeType) -> Result<ShapeFile> {
+        self.get_geofred("/shapes/file", &[("shape", shape.query_code().to_owned())])
+            .await
+    }
+
+    /// GET a core-FRED `path` with `params`; see [`get_from`](Self::get_from).
     async fn get<T: DeserializeOwned>(
         &self,
+        path: &str,
+        params: &[(&'static str, String)],
+    ) -> Result<T> {
+        self.get_from(&self.base_url, path, params).await
+    }
+
+    /// GET a GeoFRED / Maps `path` with `params` (the `/geofred` base);
+    /// see [`get_from`](Self::get_from).
+    async fn get_geofred<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        params: &[(&'static str, String)],
+    ) -> Result<T> {
+        self.get_from(&self.geofred_base_url, path, params).await
+    }
+
+    /// GET `base_url` + `path` with `params` plus `api_key`/`file_type`, then
+    /// deserialize the JSON body as `T`. A non-success status becomes
+    /// [`Error::Api`] (or [`Error::RateLimited`]); a body that doesn't match `T`
+    /// becomes [`Error::Deserialize`].
+    async fn get_from<T: DeserializeOwned>(
+        &self,
+        base_url: &str,
         path: &str,
         params: &[(&'static str, String)],
     ) -> Result<T> {
@@ -857,7 +1012,7 @@ impl Client {
 
         let response = self
             .http
-            .get(format!("{}{}", self.base_url, path))
+            .get(format!("{base_url}{path}"))
             .query(&query)
             .send()
             .await?;
@@ -963,6 +1118,12 @@ struct SourceResponse {
     sources: Vec<Source>,
 }
 
+/// The GeoFRED `series/group` response envelope: `{ "series_group": { … } }`.
+#[derive(Deserialize)]
+struct SeriesGroupResponse {
+    series_group: SeriesGroup,
+}
+
 /// FRED's error response body.
 #[derive(Deserialize)]
 struct FredErrorBody {
@@ -976,8 +1137,9 @@ mod tests {
     use std::time::Duration;
 
     use crate::{
-        CategoryId, Error, Frequency, OrderBy, Paginate, ReleaseElementId, ReleaseId,
-        SeasonalAdjustment, SeriesId, SortOrder, SourceId, Units, UpdatesFilter,
+        CategoryId, Error, Frequency, OrderBy, Paginate, RegionType, ReleaseElementId, ReleaseId,
+        SeasonalAdjustment, SeriesGroupId, SeriesId, ShapeType, SortOrder, SourceId, Units,
+        UpdatesFilter,
     };
     use wiremock::matchers::{method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -2153,5 +2315,117 @@ mod tests {
             dates.vintage_dates[0],
             chrono::NaiveDate::from_ymd_opt(1958, 12, 21).unwrap()
         );
+    }
+
+    // --- GeoFRED / Maps (ADR-0025) -------------------------------------------
+
+    #[tokio::test]
+    async fn geofred_regional_data_sends_all_params_and_parses() {
+        let server = MockServer::start().await;
+        // The mock matches only when every required param — including the enum
+        // query codes (region_type=state, frequency=a, season=NSA) — reaches the
+        // wire on the `/geofred` base.
+        Mock::given(method("GET"))
+            .and(path("/regional/data"))
+            .and(query_param("series_group", "882"))
+            .and(query_param("region_type", "state"))
+            .and(query_param("date", "2013-01-01"))
+            .and(query_param("units", "Dollars"))
+            .and(query_param("frequency", "a"))
+            .and(query_param("season", "NSA"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"meta":{"title":"t","region":"state","seasonality":"Not Seasonally Adjusted",
+                    "units":"Dollars","frequency":"Annual","data":{"2013-01-01":[
+                        {"region":"Alabama","code":"01","value":35706,"series_id":"ALPCPI"}
+                    ]}}}"#,
+            ))
+            .mount(&server)
+            .await;
+
+        let data = client_for(&server)
+            .regional_data(
+                &SeriesGroupId::new("882"),
+                RegionType::State,
+                chrono::NaiveDate::from_ymd_opt(2013, 1, 1).unwrap(),
+                "Dollars",
+                Frequency::Annual,
+                SeasonalAdjustment::NotSeasonallyAdjusted,
+            )
+            .await
+            .expect("regional data parses");
+        let day = &data.meta.data["2013-01-01"];
+        assert_eq!(day[0].region, "Alabama");
+        assert_eq!(day[0].value, Some(35706.0));
+        assert_eq!(day[0].series_id, SeriesId::new("ALPCPI"));
+    }
+
+    #[tokio::test]
+    async fn geofred_series_data_sends_optional_date_and_parses() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/series/data"))
+            .and(query_param("series_id", "SMU56000000500000001"))
+            .and(query_param("date", "2013-01-01"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"meta":{"title":"t","region":"state","seasonality":"Not Seasonally Adjusted",
+                    "units":"Thousands of Persons","frequency":"Monthly","data":{"2013-01-01":[
+                        {"region":"Alabama","code":"01","value":1506.5,"series_id":"SMU01000000500000001"}
+                    ]}}}"#,
+            ))
+            .mount(&server)
+            .await;
+
+        let data = client_for(&server)
+            .series_data(&SeriesId::new("SMU56000000500000001"))
+            .date(chrono::NaiveDate::from_ymd_opt(2013, 1, 1).unwrap())
+            .send()
+            .await
+            .expect("series data parses");
+        assert_eq!(data.meta.data["2013-01-01"][0].value, Some(1506.5));
+    }
+
+    #[tokio::test]
+    async fn geofred_series_group_unwraps_envelope_and_parses() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/series/group"))
+            .and(query_param("series_id", "SMU56000000500000001"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"series_group":{"title":"All Employees: Total Private","region_type":"state",
+                    "series_group":"1223","season":"NSA","units":"Thousands of Persons",
+                    "frequency":"Monthly","min_date":"1990-01-01","max_date":"2026-05-01"}}"#,
+            ))
+            .mount(&server)
+            .await;
+
+        let group = client_for(&server)
+            .series_group(&SeriesId::new("SMU56000000500000001"))
+            .await
+            .expect("series group parses");
+        assert_eq!(group.id, SeriesGroupId::new("1223"));
+        assert_eq!(group.region_type, "state");
+    }
+
+    #[tokio::test]
+    async fn geofred_shape_file_sends_shape_and_parses_geojson() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/shapes/file"))
+            .and(query_param("shape", "bea"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"type":"FeatureCollection","name":"state_bea_region","features":[
+                    {"type":"Feature","properties":{"bea_region":8},
+                     "geometry":{"type":"MultiPolygon","coordinates":[[[[1485,2651]]]]}}
+                ]}"#,
+            ))
+            .mount(&server)
+            .await;
+
+        let shapes = client_for(&server)
+            .shape_file(ShapeType::Bea)
+            .await
+            .expect("shape file parses");
+        assert_eq!(shapes.kind, "FeatureCollection");
+        assert_eq!(shapes.features[0].geometry.kind, "MultiPolygon");
     }
 }

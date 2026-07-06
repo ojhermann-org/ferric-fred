@@ -5,6 +5,7 @@
 //!
 //! The client covers all of FRED's read endpoints — series, observations,
 //! search, categories, releases, sources, tags, and the release table tree —
+//! plus the GeoFRED / Maps API for regional data and its geographic shape files,
 //! behind ergonomic async builders, with newtype identifiers, typed enums for
 //! FRED's closed value sets, and a typed [`Error`] taxonomy that never panics on
 //! a network or parse failure. Paginated endpoints can be walked to exhaustion
@@ -47,6 +48,8 @@ mod observation;
 mod observations_request;
 mod order_by;
 mod paginate;
+mod region_type;
+mod regional_data;
 mod release;
 mod release_date;
 mod release_dates_request;
@@ -56,9 +59,13 @@ mod releases_request;
 mod search_type;
 mod seasonal_adjustment;
 mod series;
+mod series_data_request;
+mod series_group;
 mod series_list_request;
 mod series_search_request;
 mod series_updates_request;
+mod shape_file;
+mod shape_type;
 mod sort_order;
 mod source;
 mod sources_request;
@@ -74,11 +81,13 @@ pub use category::Category;
 pub use client::Client;
 pub use error::Error;
 pub use frequency::Frequency;
-pub use ids::{CategoryId, ReleaseElementId, ReleaseId, SeriesId, SourceId};
+pub use ids::{CategoryId, ReleaseElementId, ReleaseId, SeriesGroupId, SeriesId, SourceId};
 pub use observation::Observation;
 pub use observations_request::ObservationsRequest;
 pub use order_by::OrderBy;
 pub use paginate::{Page, Paginate};
+pub use region_type::RegionType;
+pub use regional_data::{RegionalData, RegionalDataMeta, RegionalDataPoint};
 pub use release::{Release, ReleasesResults};
 pub use release_date::{ReleaseDate, ReleaseDatesResults};
 pub use release_dates_request::ReleaseDatesRequest;
@@ -88,9 +97,13 @@ pub use releases_request::ReleasesRequest;
 pub use search_type::SearchType;
 pub use seasonal_adjustment::SeasonalAdjustment;
 pub use series::{Series, SeriesSearchResults};
+pub use series_data_request::SeriesDataRequest;
+pub use series_group::SeriesGroup;
 pub use series_list_request::SeriesListRequest;
 pub use series_search_request::SeriesSearchRequest;
 pub use series_updates_request::SeriesUpdatesRequest;
+pub use shape_file::{Feature, Geometry, ShapeFile};
+pub use shape_type::ShapeType;
 pub use sort_order::SortOrder;
 pub use source::{Source, SourcesResults};
 pub use sources_request::SourcesRequest;

@@ -41,6 +41,21 @@ impl SeasonalAdjustment {
             Self::Other(label) => label,
         }
     }
+
+    /// The short code used by GeoFRED / Maps requests (the `season` parameter):
+    /// `SA`, `NSA`, `SAAR`. The core FRED endpoints only ever *return* seasonal
+    /// adjustment (as a [`label`](Self::label)); GeoFRED is the one surface that
+    /// takes it as a request parameter, and it wants these codes. For
+    /// [`SeasonalAdjustment::Other`] this returns the raw label, which may not be
+    /// a valid code.
+    pub fn query_code(&self) -> &str {
+        match self {
+            Self::SeasonallyAdjusted => "SA",
+            Self::NotSeasonallyAdjusted => "NSA",
+            Self::SeasonallyAdjustedAnnualRate => "SAAR",
+            Self::Other(label) => label,
+        }
+    }
 }
 
 impl fmt::Display for SeasonalAdjustment {
@@ -114,6 +129,19 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&SeasonalAdjustment::SeasonallyAdjustedAnnualRate).unwrap(),
             "\"Seasonally Adjusted Annual Rate\""
+        );
+    }
+
+    #[test]
+    fn query_codes_match_geofred() {
+        assert_eq!(SeasonalAdjustment::SeasonallyAdjusted.query_code(), "SA");
+        assert_eq!(
+            SeasonalAdjustment::NotSeasonallyAdjusted.query_code(),
+            "NSA"
+        );
+        assert_eq!(
+            SeasonalAdjustment::SeasonallyAdjustedAnnualRate.query_code(),
+            "SAAR"
         );
     }
 }

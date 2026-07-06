@@ -38,6 +38,47 @@ impl From<String> for SeriesId {
     }
 }
 
+/// A GeoFRED / Maps series-group identifier, e.g. `1223` — the group of
+/// regional series a `geofred/regional/data` request pulls a cross-section from.
+///
+/// A newtype over `String`: FRED transmits it as a string (`"series_group":
+/// "1223"`) even though it reads as a number, so — unlike the numeric
+/// [`CategoryId`]/[`ReleaseId`] `u32` newtypes — it stays string-backed to match
+/// the wire (ADR-0005). Construction does no validation.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct SeriesGroupId(String);
+
+impl SeriesGroupId {
+    /// Wrap a string as a [`SeriesGroupId`].
+    pub fn new(id: impl Into<String>) -> Self {
+        Self(id.into())
+    }
+
+    /// Borrow the identifier as a string slice.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for SeriesGroupId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl From<&str> for SeriesGroupId {
+    fn from(s: &str) -> Self {
+        Self(s.to_owned())
+    }
+}
+
+impl From<String> for SeriesGroupId {
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+
 /// A FRED category identifier — a numeric node in the category tree (the root is
 /// [`CategoryId::ROOT`], id `0`).
 ///

@@ -39,11 +39,16 @@ The library wraps **all of FRED's read endpoints** — series and observations
 (including ALFRED point-in-time / vintage data via a real-time window),
 search, categories, releases (including the nested release-table tree, with
 optional inline observation values), sources,
-and tags — behind ergonomic builders, with newtype identifiers, typed enums for
+and tags — plus the **GeoFRED / Maps API** (regional data and the geographic
+shape files to map it, [ADR-0025](docs/adr/0025-geofred-maps-api.md)) — behind
+ergonomic builders, with newtype identifiers, typed enums for
 FRED's closed value sets, a non-panicking error taxonomy, and **auto-pagination**
 (`Paginate::send_all` walks an endpoint to exhaustion, `Paginate::stream` yields
 lazily; `--all` on the CLI). See [ADR-0020](docs/adr/0020-auto-pagination.md) and
 [ADR-0021](docs/adr/0021-streaming-pagination.md).
+
+GeoFRED support currently lands at the **library** layer; CLI and MCP exposure
+follow in subsequent slices ([ADR-0013](docs/adr/0013-endpoint-addition-pattern.md)).
 
 Pick an entry point:
 
