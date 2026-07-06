@@ -101,6 +101,8 @@ accept the FRED value sets).
 
 ## Using the MCP server
 
+[![ferric-fred MCP server](https://glama.ai/mcp/servers/ojhermann-org/ferric-fred/badges/score.svg)](https://glama.ai/mcp/servers/ojhermann-org/ferric-fred)
+
 `fred-mcp` is an [MCP](https://modelcontextprotocol.io/) server (ADR-0010) that
 exposes FRED to MCP-capable clients over stdio. It reads `FRED_API_KEY` from the
 environment and provides thirty-one tools:
@@ -158,6 +160,10 @@ cargo build --release -p ferric-fred-mcp   # or from the workspace: target/relea
   }
 }
 ```
+
+It is also listed on [Glama](https://glama.ai/mcp/servers/ojhermann-org/ferric-fred):
+
+[![ferric-fred MCP server](https://glama.ai/mcp/servers/ojhermann-org/ferric-fred/badges/card.svg)](https://glama.ai/mcp/servers/ojhermann-org/ferric-fred)
 
 ## Development
 
