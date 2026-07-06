@@ -91,8 +91,8 @@ jobs:
       #
       # Order is publish-then-PR: `release` publishes any unreleased crate
       # versions (library first — release-plz orders by the dependency graph),
-      # then `release-pr` refreshes the next-release PR. On this first run that
-      # leaves no redundant PR, since 0.1.0 is published before the PR pass.
+      # then `release-pr` refreshes the next-release PR. Publishing first means
+      # the just-released version is never re-proposed by the PR pass.
       - name: Release
         env:
           INFISICAL_CLIENT_ID: ${{ secrets.INFISICAL_CLIENT_ID }}
@@ -115,10 +115,12 @@ jobs:
                 release-plz "$@" --git-token "$GITHUB_TOKEN"
             }
             # `release` (publish + tag + GitHub release) must succeed. `release-pr`
-            # only opens the next version-bump PR; if the org forbids Actions from
-            # creating PRs it 403s, which must NOT fail an otherwise-successful
-            # release — so it is best-effort. (Versions are bumped manually in a
-            # PR until PR-creation is permitted.)
+            # only opens the next version-bump PR; it is kept best-effort so a
+            # transient failure can't fail an otherwise-successful publish. It
+            # needs the repo setting "Allow GitHub Actions to create and approve
+            # pull requests" ON — the org permits it, and it is enabled at the repo
+            # level (ADR-0012). With it off, release-pr 403s and opens no PR, and
+            # versions must be bumped by hand.
             run_rp release
             run_rp release-pr \
               || echo "::warning::release-pr skipped (creating the version-bump PR is not permitted); release/publish succeeded"
