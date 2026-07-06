@@ -2,6 +2,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/ferric-fred-mcp.svg)](https://crates.io/crates/ferric-fred-mcp)
 [![License: MIT OR Apache-2.0](https://img.shields.io/crates/l/ferric-fred-mcp.svg)](#license)
+[![ferric-fred MCP server](https://glama.ai/mcp/servers/ojhermann-org/ferric-fred/badges/score.svg)](https://glama.ai/mcp/servers/ojhermann-org/ferric-fred)
 
 `fred-mcp` — a [Model Context Protocol](https://modelcontextprotocol.io/) server
 that exposes [FRED](https://fred.stlouisfed.org/) (Federal Reserve Economic Data)
@@ -69,6 +70,10 @@ The full tool list, with parameters, is in the
 — full tool reference and design ADRs (see
 [ADR-0010](https://github.com/ojhermann-org/ferric-fred/blob/main/docs/adr/0010-mcp-server-design.md)
 for the server design).
+
+## Listed on Glama
+
+[![ferric-fred MCP server](https://glama.ai/mcp/servers/ojhermann-org/ferric-fred/badges/card.svg)](https://glama.ai/mcp/servers/ojhermann-org/ferric-fred)
 
 ## MCP registry
 
