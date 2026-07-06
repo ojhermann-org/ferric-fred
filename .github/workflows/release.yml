@@ -114,9 +114,13 @@ jobs:
                 --env=dev --path=/shared -- \
                 release-plz "$@" --git-token "$GITHUB_TOKEN"
             }
+            # WARNING: this whole script runs inside a single-quoted bash -c
+            # string, so NO apostrophes anywhere in here — a stray one silently
+            # ends the string and breaks the script. Avoid contractions.
+            #
             # `release` (publish + tag + GitHub release) must succeed. `release-pr`
             # only opens the next version-bump PR; it is kept best-effort so a
-            # transient failure can't fail an otherwise-successful publish. It
+            # transient failure cannot fail an otherwise-successful publish. It
             # needs the repo setting "Allow GitHub Actions to create and approve
             # pull requests" ON — the org permits it, and it is enabled at the repo
             # level (ADR-0012). With it off, release-pr 403s and opens no PR, and
