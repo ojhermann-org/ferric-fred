@@ -40,6 +40,34 @@ script and running `apply` via a reviewed PR — not by hand in the GitHub UI**,
 the drift-check (`repo-settings.sh check`) will flag it. Org-wide settings (branch
 protection, rulesets) are *not* here — they live in `ojhermann-org/github-settings`.
 
+## MCP quality review (Glama)
+
+The MCP server (`ferric-fred-mcp`) is listed and scored on
+[Glama](https://glama.ai/mcp/servers/ojhermann-org/ferric-fred) — a quality score
+(tool-definition quality + server coherence) plus per-tool feedback. Treat that
+feedback as a standing signal, **event-driven first, periodic second**:
+
+- **On every change to the MCP server** (tools, descriptions, annotations, output
+  schemas) re-scoring is part of the release, not a follow-up. The score only
+  moves when we change the server or Glama changes its methodology — that's where
+  the real signal is.
+- **Periodic sweep:** pull the score, the Server Quality Checklist, and the Tool
+  Scores; compare against last time; open a GitHub issue per gap or regression and
+  work them down (e.g. tool annotations, output schemas). Cadence: **monthly** by
+  default, **weekly while a quality backlog is open**.
+
+**Refreshing the score after a change is a two-step gotcha** (Glama builds from
+git `main`, not crates.io):
+
+1. **Build & release** on the Glama server admin page — recompiles the binary from
+   `main` and refreshes the *tool capture*.
+2. **Sync Server** in the admin UI — forces the otherwise-async (~daily) LLM
+   *re-score*. The public `/score` page is CDN-cached, so cache-bust (`?cb=…`
+   plus no-cache headers) to confirm; a rebuild alone won't visibly move the number.
+
+This review is kicked off from a session (Claude can't self-schedule); the
+checklist keeps it repeatable.
+
 ## Deletion & creation
 
 **Ask before deleting or substantively rewriting:**
