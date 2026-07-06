@@ -164,6 +164,14 @@ enum Command {
         /// With `--tables`: print only the subtree rooted at this element id.
         #[arg(long, requires = "tables", value_name = "ELEMENT_ID")]
         element: Option<u32>,
+        /// With `--tables`: fold each series row's latest observation value into
+        /// the tree (structure-only otherwise).
+        #[arg(long, requires = "tables")]
+        observation_values: bool,
+        /// With `--tables`: observation value as of this date (`YYYY-MM-DD`);
+        /// implies `--observation-values`.
+        #[arg(long, requires = "tables", value_name = "YYYY-MM-DD")]
+        observation_date: Option<NaiveDate>,
         /// Maximum number of results (applies to the list, `--series`, `--dates`, and tag views).
         #[arg(long)]
         limit: Option<u32>,
@@ -394,6 +402,8 @@ async fn main() -> Result<()> {
             related_tags,
             tables,
             element,
+            observation_values,
+            observation_date,
             limit,
             order_by,
             sort,
@@ -410,6 +420,8 @@ async fn main() -> Result<()> {
                     related_tags,
                     tables,
                     element,
+                    observation_values,
+                    observation_date,
                     limit,
                     order_by,
                     sort,
@@ -884,16 +896,25 @@ async fn category(client: &Client, args: CategoryArgs, json: bool, all: bool) ->
 }
 
 /// Print a release-table element and its descendants, indented by depth. A
-/// `series`-type row shows its series id in brackets.
+/// `series`-type row shows its series id in brackets, and — when observation
+/// values were requested — its value and FRED-formatted date (` = 292.26 [Jun
+/// 2023]`).
 fn print_table_element(element: &ReleaseTableElement, depth: usize) {
     let indent = "  ".repeat(depth);
     match &element.series_id {
-        Some(series_id) => println!(
+        Some(series_id) => print!(
             "{indent}{}  ({}, {series_id})",
             element.name, element.element_type
         ),
-        None => println!("{indent}{}  ({})", element.name, element.element_type),
+        None => print!("{indent}{}  ({})", element.name, element.element_type),
     }
+    if let Some(value) = element.observation_value {
+        match &element.observation_date {
+            Some(date) => print!(" = {value} [{date}]"),
+            None => print!(" = {value}"),
+        }
+    }
+    println!();
     for child in &element.children {
         print_table_element(child, depth + 1);
     }
@@ -913,6 +934,8 @@ struct ReleaseArgs {
     related_tags: Vec<String>,
     tables: bool,
     element: Option<u32>,
+    observation_values: bool,
+    observation_date: Option<NaiveDate>,
     limit: Option<u32>,
     order_by: Option<OrderByArg>,
     sort: Option<SortOrderArg>,
@@ -929,6 +952,8 @@ async fn release(client: &Client, args: ReleaseArgs, json: bool, all: bool) -> R
         related_tags,
         tables,
         element,
+        observation_values,
+        observation_date,
         limit,
         order_by,
         sort,
@@ -1134,6 +1159,12 @@ async fn release(client: &Client, args: ReleaseArgs, json: bool, all: bool) -> R
         let mut request = client.release_tables(release_id);
         if let Some(element_id) = element {
             request = request.element(ReleaseElementId::new(element_id));
+        }
+        if observation_values {
+            request = request.include_observation_values(true);
+        }
+        if let Some(date) = observation_date {
+            request = request.observation_date(date);
         }
 
         let table = request
