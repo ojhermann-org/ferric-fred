@@ -13,7 +13,8 @@ Federal Reserve Economic Data, from the Federal Reserve Bank of St. Louis.
 
 - **Async, typed, and complete** — covers all of FRED's read endpoints (series,
   observations, search, categories, releases, sources, tags, and the release
-  table tree) behind ergonomic builders.
+  table tree) plus the GeoFRED / Maps API (regional data and geographic shape
+  files) behind ergonomic builders.
 - **Strong domain modelling** — newtype identifiers (`SeriesId`, `CategoryId`,
   `ReleaseId`, `SourceId`), typed enums for FRED's closed value sets (units,
   frequency, ordering, …), and a typed error taxonomy that never panics on a
