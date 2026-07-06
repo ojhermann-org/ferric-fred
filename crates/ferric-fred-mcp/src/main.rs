@@ -370,7 +370,13 @@ impl FredServer {
     #[tool(
         name = "get_series",
         description = "Fetch metadata for a FRED series by its id (e.g. GNPCA, UNRATE): title, \
-                       frequency, seasonal adjustment, units, observation date range, and popularity."
+                       frequency, seasonal adjustment, units, observation date range, and popularity.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
     )]
     async fn get_series(
         &self,
@@ -394,7 +400,13 @@ impl FredServer {
     #[tool(
         name = "search_series",
         description = "Search FRED for series matching text. Returns the matching series along \
-                       with pagination metadata (total match count, offset, limit)."
+                       with pagination metadata (total match count, offset, limit).",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
     )]
     async fn search_series(
         &self,
@@ -427,7 +439,13 @@ impl FredServer {
         name = "get_observations",
         description = "Fetch a FRED series' observations (date/value pairs). Supports an optional \
                        date range, a units transform, aggregation to a lower frequency, sort \
-                       order, and a result limit."
+                       order, and a result limit.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
     )]
     async fn get_observations(
         &self,
@@ -478,7 +496,13 @@ impl FredServer {
         description = "List the FRED series updated most recently (a \"what changed\" feed, \
                        ordered by last-updated time), with pagination metadata. Optionally narrow \
                        to macro or regional series, or to a start_time/end_time update window \
-                       (both required together, YYYY-MM-DDTHH:MM in FRED's timezone)."
+                       (both required together, YYYY-MM-DDTHH:MM in FRED's timezone).",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
     )]
     async fn get_series_updates(
         &self,
@@ -525,7 +549,13 @@ impl FredServer {
         name = "get_series_vintagedates",
         description = "List a FRED series' vintage dates — the dates on which it was revised or \
                        newly released, i.e. how the series looked at each point in time. Supports \
-                       sort direction and a result limit."
+                       sort direction and a result limit.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
     )]
     async fn get_series_vintagedates(
         &self,
@@ -556,7 +586,13 @@ impl FredServer {
     #[tool(
         name = "get_category",
         description = "Fetch a FRED category by its id (0 is the root of the category tree): its \
-                       name and parent category id."
+                       name and parent category id.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
     )]
     async fn get_category(
         &self,
@@ -581,7 +617,13 @@ impl FredServer {
     #[tool(
         name = "get_category_children",
         description = "List the child categories of a FRED category (use id 0 for the top-level \
-                       categories). The primary way to walk the category tree downward."
+                       categories). The primary way to walk the category tree downward.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
     )]
     async fn get_category_children(
         &self,
@@ -610,7 +652,13 @@ impl FredServer {
         name = "get_category_related",
         description = "List the categories related to a FRED category — cross-links to sibling \
                        topics elsewhere in the tree, distinct from its parent/child hierarchy. \
-                       Often empty."
+                       Often empty.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
     )]
     async fn get_category_related(
         &self,
@@ -639,7 +687,13 @@ impl FredServer {
         name = "get_category_series",
         description = "List the FRED series that belong to a category, with pagination metadata \
                        (total count, offset, limit). Supports ordering, sort direction, and a \
-                       result limit."
+                       result limit.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
     )]
     async fn get_category_series(
         &self,
@@ -674,7 +728,13 @@ impl FredServer {
         name = "get_releases",
         description = "List FRED data releases (publications such as \"Gross Domestic Product\"), \
                        with pagination metadata. A browse axis parallel to categories. Supports \
-                       sort direction and a result limit."
+                       sort direction and a result limit.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
     )]
     async fn get_releases(
         &self,
@@ -703,7 +763,13 @@ impl FredServer {
     #[tool(
         name = "get_release",
         description = "Fetch a FRED data release by its id (e.g. 53 = Gross Domestic Product): its \
-                       name, press-release flag, and link."
+                       name, press-release flag, and link.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
     )]
     async fn get_release(
         &self,
@@ -725,7 +791,13 @@ impl FredServer {
         name = "get_release_series",
         description = "List the FRED series published in a release, with pagination metadata \
                        (total count, offset, limit). Supports ordering, sort direction, and a \
-                       result limit."
+                       result limit.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
     )]
     async fn get_release_series(
         &self,
@@ -760,7 +832,13 @@ impl FredServer {
         name = "get_release_sources",
         description = "List the FRED data sources a release draws from (the reverse of \
                        get_source_releases). Returns the full unpaginated list wrapped as \
-                       {count, sources}."
+                       {count, sources}.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
     )]
     async fn get_release_sources(
         &self,
@@ -789,7 +867,13 @@ impl FredServer {
         description = "List the publication dates of ALL FRED releases — a release calendar across \
                        FRED — with pagination metadata. Each entry names its release. Newest first \
                        by default; supports sort direction, a result limit, and including dates \
-                       that have no data yet."
+                       that have no data yet.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
     )]
     async fn get_releases_dates(
         &self,
@@ -823,7 +907,13 @@ impl FredServer {
         description = "List the publication dates of ONE FRED release (its calendar), with \
                        pagination metadata. Oldest first by default; supports sort direction, a \
                        result limit, and including dates that have no data yet (e.g. scheduled \
-                       future releases)."
+                       future releases).",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
     )]
     async fn get_release_dates(
         &self,
@@ -857,7 +947,13 @@ impl FredServer {
         description = "Fetch a FRED release's table tree — the nested layout (sections, tables, and \
                        the series rows beneath them) it uses to present its series. Optionally \
                        scope to the subtree rooted at one element id. Returns the tree as \
-                       structured JSON, with each element's children nested under it."
+                       structured JSON, with each element's children nested under it.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
     )]
     async fn get_release_tables(
         &self,
@@ -886,7 +982,13 @@ impl FredServer {
         name = "get_sources",
         description = "List FRED data sources (the organizations that produce releases, e.g. the \
                        Bureau of Economic Analysis), with pagination metadata. Supports sort \
-                       direction and a result limit."
+                       direction and a result limit.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
     )]
     async fn get_sources(
         &self,
@@ -915,7 +1017,13 @@ impl FredServer {
     #[tool(
         name = "get_source",
         description = "Fetch a FRED data source by its id (e.g. 18 = U.S. Bureau of Economic \
-                       Analysis): its name and link."
+                       Analysis): its name and link.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
     )]
     async fn get_source(
         &self,
@@ -936,7 +1044,13 @@ impl FredServer {
     #[tool(
         name = "get_source_releases",
         description = "List the releases produced by a FRED data source, with pagination metadata. \
-                       Supports sort direction and a result limit."
+                       Supports sort direction and a result limit.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
     )]
     async fn get_source_releases(
         &self,
@@ -966,7 +1080,13 @@ impl FredServer {
         name = "get_tags",
         description = "Browse or search FRED's tag vocabulary (keywords such as \"gdp\", \
                        \"quarterly\", \"nsa\" used to classify series). Optionally filter by \
-                       search text. Returns tags with their group, popularity, and series count."
+                       search text. Returns tags with their group, popularity, and series count.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
     )]
     async fn get_tags(
         &self,
@@ -999,7 +1119,13 @@ impl FredServer {
         name = "get_related_tags",
         description = "Given a set of seed tags, list the tags that co-occur with all of them — \
                        use it to discover adjacent tags and refine a faceted search. Optionally \
-                       filter by search text. Returns tags with pagination metadata."
+                       filter by search text. Returns tags with pagination metadata.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
     )]
     async fn get_related_tags(
         &self,
@@ -1032,7 +1158,13 @@ impl FredServer {
         name = "get_tags_series",
         description = "List the FRED series carrying ALL of the given tags (faceted discovery), \
                        with pagination metadata. Supports ordering, sort direction, and a result \
-                       limit."
+                       limit.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
     )]
     async fn get_tags_series(
         &self,
@@ -1064,7 +1196,13 @@ impl FredServer {
     #[tool(
         name = "get_series_tags",
         description = "List the tags attached to a FRED series (the reverse of get_tags_series): \
-                       given a series id, what keywords classify it."
+                       given a series id, what keywords classify it.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
     )]
     async fn get_series_tags(
         &self,
@@ -1090,7 +1228,13 @@ impl FredServer {
         name = "get_category_tags",
         description = "List the tags used by the series in a FRED category (the tag facets for \
                        browsing a category), with pagination metadata. Optionally filter by search \
-                       text; supports sort direction and a result limit."
+                       text; supports sort direction and a result limit.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
     )]
     async fn get_category_tags(
         &self,
@@ -1115,7 +1259,13 @@ impl FredServer {
         name = "get_category_related_tags",
         description = "Given seed tags, list the tags that co-occur with all of them within a FRED \
                        category — refine a category browse by discovering adjacent tags. Optionally \
-                       filter by search text; supports sort direction and a result limit."
+                       filter by search text; supports sort direction and a result limit.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
     )]
     async fn get_category_related_tags(
         &self,
@@ -1140,7 +1290,13 @@ impl FredServer {
         name = "get_release_tags",
         description = "List the tags used by the series in a FRED release (the tag facets for \
                        browsing a release), with pagination metadata. Optionally filter by search \
-                       text; supports sort direction and a result limit."
+                       text; supports sort direction and a result limit.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
     )]
     async fn get_release_tags(
         &self,
@@ -1163,7 +1319,13 @@ impl FredServer {
         name = "get_release_related_tags",
         description = "Given seed tags, list the tags that co-occur with all of them within a FRED \
                        release. Optionally filter by search text; supports sort direction and a \
-                       result limit."
+                       result limit.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
     )]
     async fn get_release_related_tags(
         &self,
@@ -1188,7 +1350,13 @@ impl FredServer {
         name = "get_series_search_tags",
         description = "List the tags on the series matching a full-text search (its tag facets, for \
                        narrowing the search down), with pagination metadata. Optionally filter the \
-                       tags by text; supports sort direction and a result limit."
+                       tags by text; supports sort direction and a result limit.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
     )]
     async fn get_series_search_tags(
         &self,
@@ -1211,7 +1379,13 @@ impl FredServer {
         name = "get_series_search_related_tags",
         description = "Given seed tags, list the tags that co-occur with all of them among the \
                        series matching a full-text search. Optionally filter the tags by text; \
-                       supports sort direction and a result limit."
+                       supports sort direction and a result limit.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
     )]
     async fn get_series_search_related_tags(
         &self,
@@ -1235,7 +1409,13 @@ impl FredServer {
     #[tool(
         name = "get_series_categories",
         description = "List the categories a FRED series belongs to (the reverse of \
-                       get_category_series): given a series id, where it sits in the category tree."
+                       get_category_series): given a series id, where it sits in the category tree.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
     )]
     async fn get_series_categories(
         &self,
@@ -1262,7 +1442,13 @@ impl FredServer {
     #[tool(
         name = "get_series_release",
         description = "Fetch the release a FRED series belongs to (the reverse of \
-                       get_release_series): given a series id, its publishing release."
+                       get_release_series): given a series id, its publishing release.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
     )]
     async fn get_series_release(
         &self,
