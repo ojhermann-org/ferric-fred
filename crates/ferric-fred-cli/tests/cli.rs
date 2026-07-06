@@ -304,6 +304,15 @@ fn json_is_a_global_flag() {
         .stdout(predicate::str::contains("--json"));
 }
 
+#[test]
+fn all_is_a_global_flag() {
+    fred()
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("--all"));
+}
+
 // --- Live tests: hit the real FRED API and require FRED_API_KEY. Run with
 // `--run-ignored all` (nextest) or `--ignored` inside the direnv/infisical
 // shell. These build a fresh Command so the inherited FRED_API_KEY survives. ---
@@ -317,6 +326,20 @@ fn search_succeeds_against_live_fred() {
         .assert()
         .success()
         .stdout(predicate::str::contains("match(es)"));
+}
+
+#[test]
+#[ignore = "hits the live FRED API; requires FRED_API_KEY"]
+fn search_all_pages_past_a_single_page() {
+    // "gdp" matches far more than FRED's 1000-per-page cap, so `--all --limit
+    // 1500` must page twice and return exactly 1500 — proving `--all` walks
+    // past a single page and that `--limit` is a ceiling on the total.
+    Command::cargo_bin("fred")
+        .unwrap()
+        .args(["search", "gdp", "--all", "--limit", "1500"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1500 match(es)"));
 }
 
 #[test]

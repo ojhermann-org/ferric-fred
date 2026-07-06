@@ -12,8 +12,10 @@ use anyhow::{Context, Result};
 use chrono::{NaiveDate, NaiveDateTime};
 use clap::{Args, Parser, Subcommand};
 use ferric_fred::{
-    CategoryId, Client, ObservationsRequest, ReleaseElementId, ReleaseId, ReleaseTableElement,
-    SeriesId, SourceId, TagsRequest,
+    CategoryId, Client, ObservationsRequest, Paginate, Release, ReleaseDate, ReleaseDatesResults,
+    ReleaseElementId, ReleaseId, ReleaseTableElement, ReleasesResults, Series, SeriesId,
+    SeriesSearchResults, Source, SourceId, SourcesResults, Tag, TagsRequest, TagsResults,
+    VintageDates,
 };
 
 use args::{AggregationArg, FrequencyArg, OrderByArg, SortOrderArg, UnitsArg, UpdatesFilterArg};
@@ -28,6 +30,11 @@ struct Cli {
     /// ignores it).
     #[arg(long, global = true)]
     json: bool,
+    /// Fetch every page of a paginated list, not just the first (list views
+    /// only; other commands ignore it). `--limit` still caps the total; without
+    /// it, all results are returned. Mind FRED's rate limits on large lists.
+    #[arg(long, global = true)]
+    all: bool,
 }
 
 #[derive(Subcommand)]
@@ -47,9 +54,10 @@ enum Command {
         /// among the matching series, e.g. --related-tags monthly,nsa.
         #[arg(long, value_delimiter = ',', value_name = "TAGS", group = "view")]
         related_tags: Vec<String>,
-        /// Maximum number of results to show.
-        #[arg(long, default_value_t = 10)]
-        limit: u32,
+        /// Maximum number of results to show (default 10; with `--all`, a cap on
+        /// the total).
+        #[arg(long)]
+        limit: Option<u32>,
         /// With the default series view: field to order results by.
         #[arg(long)]
         order_by: Option<OrderByArg>,
@@ -178,9 +186,10 @@ enum Command {
         /// Only series updated at/before this time (needs `--start-time`).
         #[arg(long, value_parser = parse_datetime, requires = "start_time")]
         end_time: Option<NaiveDateTime>,
-        /// Maximum number of results to show.
-        #[arg(long, default_value_t = 20)]
-        limit: u32,
+        /// Maximum number of results to show (default 20; with `--all`, a cap on
+        /// the total).
+        #[arg(long)]
+        limit: Option<u32>,
     },
     /// List FRED data sources, show one, or list a source's releases.
     ///
@@ -320,6 +329,7 @@ async fn main() -> Result<()> {
         .context("could not initialize the FRED client (is FRED_API_KEY set?)")?;
 
     let json = cli.json;
+    let all = cli.all;
     match cli.command {
         Command::Search {
             text,
@@ -340,10 +350,11 @@ async fn main() -> Result<()> {
                     sort,
                 },
                 json,
+                all,
             )
             .await
         }
-        Command::Series { id, view } => series(&client, &id, view.selected(), json).await,
+        Command::Series { id, view } => series(&client, &id, view.selected(), json, all).await,
         Command::Observations { id, options } => observations(&client, &id, &options, json).await,
         Command::Chart { id, options } => chart_command(&client, &id, &options).await,
         Command::Category {
@@ -369,6 +380,7 @@ async fn main() -> Result<()> {
                     sort,
                 },
                 json,
+                all,
             )
             .await
         }
@@ -403,6 +415,7 @@ async fn main() -> Result<()> {
                     sort,
                 },
                 json,
+                all,
             )
             .await
         }
@@ -411,14 +424,14 @@ async fn main() -> Result<()> {
             releases,
             limit,
             sort,
-        } => source(&client, id, releases, limit, sort, json).await,
-        Command::Tags { names, options } => tags(&client, names, &options, json).await,
+        } => source(&client, id, releases, limit, sort, json, all).await,
+        Command::Tags { names, options } => tags(&client, names, &options, json, all).await,
         Command::Updates {
             filter,
             start_time,
             end_time,
             limit,
-        } => updates(&client, filter, start_time, end_time, limit, json).await,
+        } => updates(&client, filter, start_time, end_time, limit, json, all).await,
     }
 }
 
@@ -427,6 +440,71 @@ fn print_json<T: serde::Serialize>(value: &T) -> Result<()> {
     let json = serde_json::to_string_pretty(value).context("serializing result to JSON failed")?;
     println!("{json}");
     Ok(())
+}
+
+// Wrap a fully-collected `--all` (`send_all`) result set back into the paginated
+// response shape the printers expect: `count` is the number collected and
+// `offset` is 0, so `--all` reuses the same text and JSON output as a single
+// page. Since every result was fetched, `count` is the true total.
+
+fn all_series(series: Vec<Series>) -> SeriesSearchResults {
+    let count = series.len() as u32;
+    SeriesSearchResults {
+        series,
+        count,
+        offset: 0,
+        limit: count,
+    }
+}
+
+fn all_tags(tags: Vec<Tag>) -> TagsResults {
+    let count = tags.len() as u32;
+    TagsResults {
+        count,
+        offset: 0,
+        limit: count,
+        tags,
+    }
+}
+
+fn all_releases(releases: Vec<Release>) -> ReleasesResults {
+    let count = releases.len() as u32;
+    ReleasesResults {
+        count,
+        offset: 0,
+        limit: count,
+        releases,
+    }
+}
+
+fn all_release_dates(release_dates: Vec<ReleaseDate>) -> ReleaseDatesResults {
+    let count = release_dates.len() as u32;
+    ReleaseDatesResults {
+        count,
+        offset: 0,
+        limit: count,
+        release_dates,
+    }
+}
+
+fn all_sources(sources: Vec<Source>) -> SourcesResults {
+    let count = sources.len() as u32;
+    SourcesResults {
+        count,
+        offset: 0,
+        limit: count,
+        sources,
+    }
+}
+
+fn all_vintage_dates(vintage_dates: Vec<NaiveDate>) -> VintageDates {
+    let count = vintage_dates.len() as u32;
+    VintageDates {
+        count,
+        offset: 0,
+        limit: count,
+        vintage_dates,
+    }
 }
 
 /// Run a scoped tags request (applying limit/sort), then print the resulting
@@ -438,6 +516,7 @@ async fn print_tags_result(
     sort: Option<SortOrderArg>,
     heading: &str,
     json: bool,
+    all: bool,
 ) -> Result<()> {
     let mut request = request;
     if let Some(limit) = limit {
@@ -447,10 +526,19 @@ async fn print_tags_result(
         request = request.sort_order(sort.into());
     }
 
-    let results = request
-        .send()
-        .await
-        .with_context(|| format!("fetching {heading} failed"))?;
+    let results = if all {
+        all_tags(
+            request
+                .send_all()
+                .await
+                .with_context(|| format!("fetching {heading} failed"))?,
+        )
+    } else {
+        request
+            .send()
+            .await
+            .with_context(|| format!("fetching {heading} failed"))?
+    };
 
     if json {
         return print_json(&results);
@@ -467,12 +555,12 @@ struct SearchArgs {
     text: String,
     tags: bool,
     related_tags: Vec<String>,
-    limit: u32,
+    limit: Option<u32>,
     order_by: Option<OrderByArg>,
     sort: Option<SortOrderArg>,
 }
 
-async fn search(client: &Client, args: SearchArgs, json: bool) -> Result<()> {
+async fn search(client: &Client, args: SearchArgs, json: bool, all: bool) -> Result<()> {
     let SearchArgs {
         text,
         tags,
@@ -482,31 +570,44 @@ async fn search(client: &Client, args: SearchArgs, json: bool) -> Result<()> {
         sort,
     } = args;
 
+    // Single-page search defaults to 10 results; `--all` drops that default so a
+    // bare `--limit` becomes a ceiling and no `--limit` means "everything".
+    let limit = if all {
+        limit
+    } else {
+        Some(limit.unwrap_or(10))
+    };
+
     if tags {
         return print_tags_result(
             client.series_search_tags(text.as_str()),
-            Some(limit),
+            limit,
             sort,
             &format!("tags for series matching {text:?}"),
             json,
+            all,
         )
         .await;
     }
     if !related_tags.is_empty() {
         return print_tags_result(
             client.series_search_related_tags(text.as_str(), &related_tags),
-            Some(limit),
+            limit,
             sort,
             &format!(
                 "tags related to {} among series matching {text:?}",
                 related_tags.join(", ")
             ),
             json,
+            all,
         )
         .await;
     }
 
-    let mut request = client.search(text.as_str()).limit(limit);
+    let mut request = client.search(text.as_str());
+    if let Some(limit) = limit {
+        request = request.limit(limit);
+    }
     if let Some(order_by) = order_by {
         request = request.order_by(order_by.into());
     }
@@ -514,10 +615,19 @@ async fn search(client: &Client, args: SearchArgs, json: bool) -> Result<()> {
         request = request.sort_order(sort.into());
     }
 
-    let results = request
-        .send()
-        .await
-        .with_context(|| format!("search for {text:?} failed"))?;
+    let results = if all {
+        all_series(
+            request
+                .send_all()
+                .await
+                .with_context(|| format!("search for {text:?} failed"))?,
+        )
+    } else {
+        request
+            .send()
+            .await
+            .with_context(|| format!("search for {text:?} failed"))?
+    };
 
     if json {
         return print_json(&results);
@@ -534,7 +644,7 @@ async fn search(client: &Client, args: SearchArgs, json: bool) -> Result<()> {
     Ok(())
 }
 
-async fn series(client: &Client, id: &str, view: SeriesView, json: bool) -> Result<()> {
+async fn series(client: &Client, id: &str, view: SeriesView, json: bool, all: bool) -> Result<()> {
     let series_id = SeriesId::new(id);
 
     match view {
@@ -590,11 +700,17 @@ async fn series(client: &Client, id: &str, view: SeriesView, json: bool) -> Resu
         }
 
         SeriesView::Vintages => {
-            let dates = client
-                .series_vintagedates(&series_id)
-                .send()
-                .await
-                .with_context(|| format!("fetching vintage dates for series `{id}` failed"))?;
+            let request = client.series_vintagedates(&series_id);
+            let dates =
+                if all {
+                    all_vintage_dates(request.send_all().await.with_context(|| {
+                        format!("fetching vintage dates for series `{id}` failed")
+                    })?)
+                } else {
+                    request.send().await.with_context(|| {
+                        format!("fetching vintage dates for series `{id}` failed")
+                    })?
+                };
 
             if json {
                 return print_json(&dates);
@@ -644,7 +760,7 @@ struct CategoryArgs {
     sort: Option<SortOrderArg>,
 }
 
-async fn category(client: &Client, args: CategoryArgs, json: bool) -> Result<()> {
+async fn category(client: &Client, args: CategoryArgs, json: bool, all: bool) -> Result<()> {
     let CategoryArgs {
         id,
         related,
@@ -681,6 +797,7 @@ async fn category(client: &Client, args: CategoryArgs, json: bool) -> Result<()>
             sort,
             &format!("tags in category {id}"),
             json,
+            all,
         )
         .await;
     }
@@ -694,6 +811,7 @@ async fn category(client: &Client, args: CategoryArgs, json: bool) -> Result<()>
                 related_tags.join(", ")
             ),
             json,
+            all,
         )
         .await;
     }
@@ -710,10 +828,19 @@ async fn category(client: &Client, args: CategoryArgs, json: bool) -> Result<()>
             request = request.sort_order(sort.into());
         }
 
-        let results = request
-            .send()
-            .await
-            .with_context(|| format!("fetching series for category {id} failed"))?;
+        let results = if all {
+            all_series(
+                request
+                    .send_all()
+                    .await
+                    .with_context(|| format!("fetching series for category {id} failed"))?,
+            )
+        } else {
+            request
+                .send()
+                .await
+                .with_context(|| format!("fetching series for category {id} failed"))?
+        };
 
         if json {
             return print_json(&results);
@@ -791,7 +918,7 @@ struct ReleaseArgs {
     sort: Option<SortOrderArg>,
 }
 
-async fn release(client: &Client, args: ReleaseArgs, json: bool) -> Result<()> {
+async fn release(client: &Client, args: ReleaseArgs, json: bool, all: bool) -> Result<()> {
     let ReleaseArgs {
         id,
         series,
@@ -823,10 +950,19 @@ async fn release(client: &Client, args: ReleaseArgs, json: bool) -> Result<()> {
                 request = request.include_dates_with_no_data(true);
             }
 
-            let results = request
-                .send()
-                .await
-                .context("listing release dates failed")?;
+            let results = if all {
+                all_release_dates(
+                    request
+                        .send_all()
+                        .await
+                        .context("listing release dates failed")?,
+                )
+            } else {
+                request
+                    .send()
+                    .await
+                    .context("listing release dates failed")?
+            };
 
             if json {
                 return print_json(&results);
@@ -851,7 +987,16 @@ async fn release(client: &Client, args: ReleaseArgs, json: bool) -> Result<()> {
             request = request.sort_order(sort.into());
         }
 
-        let results = request.send().await.context("listing releases failed")?;
+        let results = if all {
+            all_releases(
+                request
+                    .send_all()
+                    .await
+                    .context("listing releases failed")?,
+            )
+        } else {
+            request.send().await.context("listing releases failed")?
+        };
 
         if json {
             return print_json(&results);
@@ -878,10 +1023,19 @@ async fn release(client: &Client, args: ReleaseArgs, json: bool) -> Result<()> {
             request = request.sort_order(sort.into());
         }
 
-        let results = request
-            .send()
-            .await
-            .with_context(|| format!("fetching series for release {id} failed"))?;
+        let results = if all {
+            all_series(
+                request
+                    .send_all()
+                    .await
+                    .with_context(|| format!("fetching series for release {id} failed"))?,
+            )
+        } else {
+            request
+                .send()
+                .await
+                .with_context(|| format!("fetching series for release {id} failed"))?
+        };
 
         if json {
             return print_json(&results);
@@ -924,10 +1078,19 @@ async fn release(client: &Client, args: ReleaseArgs, json: bool) -> Result<()> {
             request = request.include_dates_with_no_data(true);
         }
 
-        let results = request
-            .send()
-            .await
-            .with_context(|| format!("fetching dates for release {id} failed"))?;
+        let results = if all {
+            all_release_dates(
+                request
+                    .send_all()
+                    .await
+                    .with_context(|| format!("fetching dates for release {id} failed"))?,
+            )
+        } else {
+            request
+                .send()
+                .await
+                .with_context(|| format!("fetching dates for release {id} failed"))?
+        };
 
         if json {
             return print_json(&results);
@@ -948,6 +1111,7 @@ async fn release(client: &Client, args: ReleaseArgs, json: bool) -> Result<()> {
             sort,
             &format!("tags in release {id}"),
             json,
+            all,
         )
         .await;
     }
@@ -961,6 +1125,7 @@ async fn release(client: &Client, args: ReleaseArgs, json: bool) -> Result<()> {
                 related_tags.join(", ")
             ),
             json,
+            all,
         )
         .await;
     }
@@ -1018,6 +1183,7 @@ async fn source(
     limit: Option<u32>,
     sort: Option<SortOrderArg>,
     json: bool,
+    all: bool,
 ) -> Result<()> {
     // clap guarantees `--releases` is only set alongside an id, so here (no id)
     // just list all sources.
@@ -1030,7 +1196,11 @@ async fn source(
             request = request.sort_order(sort.into());
         }
 
-        let results = request.send().await.context("listing sources failed")?;
+        let results = if all {
+            all_sources(request.send_all().await.context("listing sources failed")?)
+        } else {
+            request.send().await.context("listing sources failed")?
+        };
 
         if json {
             return print_json(&results);
@@ -1054,10 +1224,19 @@ async fn source(
             request = request.sort_order(sort.into());
         }
 
-        let results = request
-            .send()
-            .await
-            .with_context(|| format!("fetching releases for source {id} failed"))?;
+        let results = if all {
+            all_releases(
+                request
+                    .send_all()
+                    .await
+                    .with_context(|| format!("fetching releases for source {id} failed"))?,
+            )
+        } else {
+            request
+                .send()
+                .await
+                .with_context(|| format!("fetching releases for source {id} failed"))?
+        };
 
         if json {
             return print_json(&results);
@@ -1101,6 +1280,7 @@ async fn tags(
     names: Vec<String>,
     options: &TagsOptions,
     json: bool,
+    all: bool,
 ) -> Result<()> {
     if names.is_empty() {
         anyhow::ensure!(
@@ -1120,7 +1300,11 @@ async fn tags(
             request = request.sort_order(sort.into());
         }
 
-        let results = request.send().await.context("listing tags failed")?;
+        let results = if all {
+            all_tags(request.send_all().await.context("listing tags failed")?)
+        } else {
+            request.send().await.context("listing tags failed")?
+        };
 
         if json {
             return print_json(&results);
@@ -1144,10 +1328,19 @@ async fn tags(
             request = request.sort_order(sort.into());
         }
 
-        let results = request
-            .send()
-            .await
-            .with_context(|| format!("fetching tags related to {names:?} failed"))?;
+        let results = if all {
+            all_tags(
+                request
+                    .send_all()
+                    .await
+                    .with_context(|| format!("fetching tags related to {names:?} failed"))?,
+            )
+        } else {
+            request
+                .send()
+                .await
+                .with_context(|| format!("fetching tags related to {names:?} failed"))?
+        };
 
         if json {
             return print_json(&results);
@@ -1170,10 +1363,19 @@ async fn tags(
         request = request.sort_order(sort.into());
     }
 
-    let results = request
-        .send()
-        .await
-        .with_context(|| format!("fetching series for tags {names:?} failed"))?;
+    let results = if all {
+        all_series(
+            request
+                .send_all()
+                .await
+                .with_context(|| format!("fetching series for tags {names:?} failed"))?,
+        )
+    } else {
+        request
+            .send()
+            .await
+            .with_context(|| format!("fetching series for tags {names:?} failed"))?
+    };
 
     if json {
         return print_json(&results);
@@ -1211,10 +1413,22 @@ async fn updates(
     filter: Option<UpdatesFilterArg>,
     start_time: Option<NaiveDateTime>,
     end_time: Option<NaiveDateTime>,
-    limit: u32,
+    limit: Option<u32>,
     json: bool,
+    all: bool,
 ) -> Result<()> {
-    let mut request = client.series_updates().limit(limit);
+    // Single-page updates default to 20 results; `--all` drops that default so a
+    // bare `--limit` becomes a ceiling and no `--limit` means "everything".
+    let limit = if all {
+        limit
+    } else {
+        Some(limit.unwrap_or(20))
+    };
+
+    let mut request = client.series_updates();
+    if let Some(limit) = limit {
+        request = request.limit(limit);
+    }
     if let Some(filter) = filter {
         request = request.filter(filter.into());
     }
@@ -1224,10 +1438,19 @@ async fn updates(
         request = request.time_window(start, end);
     }
 
-    let results = request
-        .send()
-        .await
-        .context("fetching recently updated series failed")?;
+    let results = if all {
+        all_series(
+            request
+                .send_all()
+                .await
+                .context("fetching recently updated series failed")?,
+        )
+    } else {
+        request
+            .send()
+            .await
+            .context("fetching recently updated series failed")?
+    };
 
     if json {
         return print_json(&results);
