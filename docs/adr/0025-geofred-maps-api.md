@@ -1,6 +1,6 @@
 # ADR-0025: GeoFRED / Maps API support (regional & geographic data)
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-07-06
 - **Deciders:** Project owner
 

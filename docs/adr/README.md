@@ -33,7 +33,7 @@ use them, and [`0000-adr-template.md`](0000-adr-template.md) for the template.
 | [0022](0022-repo-settings-as-code.md) | Repo-level GitHub settings as code | Accepted |
 | [0023](0023-mcp-output-schemas.md) | MCP tool output schemas via a feature-gated `schemars` derive | Accepted |
 | [0024](0024-alfred-point-in-time-observations.md) | ALFRED point-in-time & vintage observations | Accepted |
-| [0025](0025-geofred-maps-api.md) | GeoFRED / Maps API support (regional & geographic data) | Proposed |
+| [0025](0025-geofred-maps-api.md) | GeoFRED / Maps API support (regional & geographic data) | Accepted |
 
 ## Backlog (proposed, not yet written)
 
