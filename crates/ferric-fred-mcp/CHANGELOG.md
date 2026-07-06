@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.6](https://github.com/ojhermann-org/ferric-fred/compare/ferric-fred-mcp-v0.3.5...ferric-fred-mcp-v0.3.6) - 2026-07-06
+
+### Added
+
+- ALFRED point-in-time & vintage observations ([#40](https://github.com/ojhermann-org/ferric-fred/pull/40))
+- fold observation values into release/tables ([#38](https://github.com/ojhermann-org/ferric-fred/pull/38))
+
 ## [0.3.5](https://github.com/ojhermann-org/ferric-fred/compare/ferric-fred-mcp-v0.3.4...ferric-fred-mcp-v0.3.5) - 2026-07-06
 
 ### Other
