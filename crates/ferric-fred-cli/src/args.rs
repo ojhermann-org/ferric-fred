@@ -4,7 +4,10 @@
 //! variants as kebab-case values (e.g. `SearchRank` → `search-rank`).
 
 use clap::ValueEnum;
-use ferric_fred::{AggregationMethod, Frequency, OrderBy, SortOrder, Units, UpdatesFilter};
+use ferric_fred::{
+    AggregationMethod, Frequency, OrderBy, RegionType, SeasonalAdjustment, ShapeType, SortOrder,
+    Units, UpdatesFilter,
+};
 
 /// `--units` transformation (values are FRED's short codes).
 #[derive(Clone, Copy, ValueEnum)]
@@ -140,6 +143,75 @@ impl From<AggregationArg> for AggregationMethod {
             AggregationArg::Avg => Self::Average,
             AggregationArg::Sum => Self::Sum,
             AggregationArg::Eop => Self::EndOfPeriod,
+        }
+    }
+}
+
+/// `--region-type` granularity for GeoFRED `regional` (the region level to break
+/// the data down to). The library also supports region types beyond these named
+/// ones; the CLI exposes the common set.
+#[derive(Clone, Copy, ValueEnum)]
+pub(crate) enum RegionTypeArg {
+    State,
+    County,
+    Msa,
+    Country,
+    Bea,
+}
+
+impl From<RegionTypeArg> for RegionType {
+    fn from(value: RegionTypeArg) -> Self {
+        match value {
+            RegionTypeArg::State => Self::State,
+            RegionTypeArg::County => Self::County,
+            RegionTypeArg::Msa => Self::Msa,
+            RegionTypeArg::Country => Self::Country,
+            RegionTypeArg::Bea => Self::Bea,
+        }
+    }
+}
+
+/// `--shape` boundary set for GeoFRED `shapes`. As with `--region-type`, the
+/// library supports more; the CLI exposes the common set.
+#[derive(Clone, Copy, ValueEnum)]
+pub(crate) enum ShapeTypeArg {
+    State,
+    County,
+    Msa,
+    Country,
+    Bea,
+}
+
+impl From<ShapeTypeArg> for ShapeType {
+    fn from(value: ShapeTypeArg) -> Self {
+        match value {
+            ShapeTypeArg::State => Self::State,
+            ShapeTypeArg::County => Self::County,
+            ShapeTypeArg::Msa => Self::Msa,
+            ShapeTypeArg::Country => Self::Country,
+            ShapeTypeArg::Bea => Self::Bea,
+        }
+    }
+}
+
+/// `--season` seasonal adjustment for GeoFRED `regional` (values are FRED's
+/// short codes).
+#[derive(Clone, Copy, ValueEnum)]
+pub(crate) enum SeasonArg {
+    /// Not seasonally adjusted.
+    Nsa,
+    /// Seasonally adjusted.
+    Sa,
+    /// Seasonally adjusted annual rate.
+    Saar,
+}
+
+impl From<SeasonArg> for SeasonalAdjustment {
+    fn from(value: SeasonArg) -> Self {
+        match value {
+            SeasonArg::Nsa => Self::NotSeasonallyAdjusted,
+            SeasonArg::Sa => Self::SeasonallyAdjusted,
+            SeasonArg::Saar => Self::SeasonallyAdjustedAnnualRate,
         }
     }
 }
