@@ -14,6 +14,10 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 chrono = { workspace = true }
+# `time` gives the async sleep behind `Paginate::send_all`'s bounded 429 retry
+# (ADR-0020). This is the library's only tokio feature — reqwest already pulls
+# tokio in transitively; we opt into just the timer, not a runtime.
+tokio = { workspace = true, features = ["time"] }
 
 [dev-dependencies]
 # `rt` + `macros` give `#[tokio::test]` a current-thread runtime for the live and
