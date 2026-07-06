@@ -71,6 +71,13 @@ drift=0
 
 # compare <label> <desired-json> <current-json>
 # Reports per-key differences for every key present in <desired-json>.
+#
+# GitHub only populates the merge-method fields (allow_*_merge,
+# delete_branch_on_merge) in GET /repos for tokens with *write* Administration.
+# The CI token is read-only by design, so it sees them as null — a token blind
+# spot, not drift. When actual is null but desired is not, we skip that field
+# (and say so) rather than false-fail. A full admin token (local `apply`/`check`)
+# sees the real values and verifies them normally.
 compare() {
   local label="$1" desired="$2" current="$3"
   local keys key d c
@@ -78,6 +85,10 @@ compare() {
   while IFS= read -r key; do
     d="$(jq -c --arg k "$key" '.[$k]' <<<"$desired")"
     c="$(jq -c --arg k "$key" '.[$k]' <<<"$current")"
+    if [[ "$c" == "null" && "$d" != "null" ]]; then
+      printf '  skip   %-40s not visible to this token (read-only) — verify locally\n' "$label.$key"
+      continue
+    fi
     if [[ "$d" != "$c" ]]; then
       printf '  drift  %-40s desired=%s  actual=%s\n' "$label.$key" "$d" "$c"
       drift=1
