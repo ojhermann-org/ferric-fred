@@ -7,6 +7,7 @@ use crate::ReleaseId;
 /// `fred/releases/dates` and `fred/release/dates` endpoints — the date a
 /// release was (or is scheduled to be) published.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ReleaseDate {
     /// The release this date belongs to.
     pub release_id: ReleaseId,
@@ -24,6 +25,7 @@ pub struct ReleaseDate {
 /// A page of release dates with pagination metadata, shared by the
 /// `fred/releases/dates` and `fred/release/dates` endpoints.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ReleaseDatesResults {
     /// Total number of release dates available (across all pages).
     pub count: u32,

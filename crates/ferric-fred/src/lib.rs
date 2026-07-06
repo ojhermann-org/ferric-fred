@@ -11,6 +11,15 @@
 //! with [`Paginate::send_all`] or streamed lazily with [`Paginate::stream`]. See
 //! the design ADRs under `docs/adr/` for the decisions that shape the API.
 //!
+//! # Feature flags
+//!
+//! - `schemars` *(off by default)* — derive `schemars::JsonSchema` on the
+//!   public return types, so a consumer (the bundled MCP server, say) can
+//!   advertise the exact shape an endpoint returns. Additive; plain consumers
+//!   pay nothing. See [ADR-0023].
+//!
+//! [ADR-0023]: https://github.com/ojhermann-org/ferric-fred/blob/main/docs/adr/0023-mcp-output-schemas.md
+//!
 //! ```no_run
 //! # async fn run() -> ferric_fred::Result<()> {
 //! use ferric_fred::{Client, Paginate, SeriesId};

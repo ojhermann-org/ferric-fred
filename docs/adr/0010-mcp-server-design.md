@@ -60,8 +60,11 @@ We will build `ferric-fred-mcp` as an **async stdio MCP server on the official
   future switch is contained.
 - stdio-only means no remote or multi-client hosting in v1 — acceptable, since
   the primary target is a locally launched server.
-- `schemars` joins the dependency tree (MCP crate only), gated by cargo-deny like
-  everything else.
+- `schemars` joins the dependency tree, gated by cargo-deny like everything else.
+  Originally it was MCP-crate-only (the tool input schemas are derived here);
+  [ADR-0023](0023-mcp-output-schemas.md) later added an optional, default-off
+  `schemars` feature to the library so the tool *output* schemas can be derived
+  from the real return types. Default library/CLI builds remain unaffected.
 
 ## Alternatives considered
 

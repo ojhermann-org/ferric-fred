@@ -10,6 +10,7 @@ use crate::{Frequency, SeasonalAdjustment, SeriesId};
 /// string for now — FRED encodes it with a non-standard timezone offset (e.g.
 /// `2024-03-28 07:56:03-05`); a typed datetime is a later refinement.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Series {
     /// The series identifier.
     pub id: SeriesId,
@@ -49,6 +50,7 @@ pub struct Series {
 /// pagination metadata. `count` is the total number of matches across all
 /// pages, not just this one — use it with `offset`/`limit` to page.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct SeriesSearchResults {
     /// The matching series on this page. FRED names the array `seriess` (sic) on
     /// the wire; we read that but emit the correctly-spelled `series` on output.

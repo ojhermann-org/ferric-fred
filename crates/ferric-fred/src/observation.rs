@@ -11,6 +11,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 /// On *serialization* the value is emitted as a JSON number or `null` — typed
 /// JSON for consumers, not FRED's stringly-typed `"."` wire format.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Observation {
     /// The observation date. FRED dates are calendar dates with no time or zone,
     /// which [`NaiveDate`] models exactly.

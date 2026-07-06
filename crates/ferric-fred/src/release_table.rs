@@ -16,6 +16,7 @@ use crate::{ReleaseElementId, ReleaseId, SeriesId};
 /// requested (see [`ReleaseTablesRequest::element`](crate::ReleaseTablesRequest::element));
 /// for a whole-release request they are absent.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ReleaseTable {
     /// The name of the requested element, when a subtree was requested.
     #[serde(default)]
@@ -42,6 +43,7 @@ pub struct ReleaseTable {
 /// A node in a release's table tree: a section, a table, or a series row. Nodes
 /// nest via [`children`](ReleaseTableElement::children) to arbitrary depth.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ReleaseTableElement {
     /// This element's id.
     pub element_id: ReleaseElementId,

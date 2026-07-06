@@ -23,6 +23,17 @@ tokio = { workspace = true, features = ["time"] }
 # for the public signature and the generator macro behind it.
 futures-core = { workspace = true }
 async-stream = { workspace = true }
+# Optional JSON Schema derivation for the domain types, behind the `schemars`
+# feature (ADR-0023). Off by default so plain library consumers pay neither the
+# dependency nor the compile cost; the MCP server turns it on to attach output
+# schemas to its tools. `chrono04` supplies the schema for the `NaiveDate` fields.
+schemars = { workspace = true, optional = true, features = ["chrono04"] }
+
+[features]
+# Derive `schemars::JsonSchema` on the public domain (return) types, so an MCP
+# server (or any consumer) can advertise the exact shape of what an endpoint
+# returns. Additive and default-off — see ADR-0023.
+schemars = ["dep:schemars"]
 
 [dev-dependencies]
 # `rt` + `macros` give `#[tokio::test]` a current-thread runtime for the live and
