@@ -8,7 +8,10 @@
 //! behind its optional, default-off `schemars` feature, for tool *output*
 //! schemas (ADR-0023) — plain library consumers still pay nothing.
 
-use ferric_fred::{AggregationMethod, Frequency, OrderBy, SortOrder, Units, UpdatesFilter};
+use ferric_fred::{
+    AggregationMethod, Frequency, OrderBy, RegionType, SeasonalAdjustment, SortOrder, Units,
+    UpdatesFilter,
+};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -137,6 +140,51 @@ impl From<AggregationArg> for AggregationMethod {
             AggregationArg::Avg => Self::Average,
             AggregationArg::Sum => Self::Sum,
             AggregationArg::Eop => Self::EndOfPeriod,
+        }
+    }
+}
+
+/// Region granularity for the GeoFRED `get_regional_data` tool (FRED's lowercase
+/// region-type tokens). The library supports more region types; these are the
+/// common set exposed as tool inputs.
+#[derive(Debug, Clone, Copy, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum RegionTypeArg {
+    State,
+    County,
+    Msa,
+    Country,
+    Bea,
+}
+
+impl From<RegionTypeArg> for RegionType {
+    fn from(value: RegionTypeArg) -> Self {
+        match value {
+            RegionTypeArg::State => Self::State,
+            RegionTypeArg::County => Self::County,
+            RegionTypeArg::Msa => Self::Msa,
+            RegionTypeArg::Country => Self::Country,
+            RegionTypeArg::Bea => Self::Bea,
+        }
+    }
+}
+
+/// Seasonal adjustment for the GeoFRED `get_regional_data` tool (FRED's uppercase
+/// short codes).
+#[derive(Debug, Clone, Copy, Deserialize, JsonSchema)]
+#[serde(rename_all = "UPPERCASE")]
+pub(crate) enum SeasonArg {
+    Nsa,
+    Sa,
+    Saar,
+}
+
+impl From<SeasonArg> for SeasonalAdjustment {
+    fn from(value: SeasonArg) -> Self {
+        match value {
+            SeasonArg::Nsa => Self::NotSeasonallyAdjusted,
+            SeasonArg::Sa => Self::SeasonallyAdjusted,
+            SeasonArg::Saar => Self::SeasonallyAdjustedAnnualRate,
         }
     }
 }
