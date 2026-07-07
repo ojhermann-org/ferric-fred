@@ -47,25 +47,33 @@ fi
 gh_flag=()
 [ -n "${GITHUB_TOKEN:-}" ] && gh_flag=(--github-actions "$GITHUB_TOKEN")
 
+# Every `bencher run` is wrapped in `timeout` so a hang (e.g. a network stall
+# talking to api.bencher.dev) fails the step within minutes and flushes its logs,
+# rather than sitting idle until the job-level timeout. `timeout` returns 124 on
+# expiry, which trips `set -e`.
+BENCHER_TIMEOUT="${BENCHER_TIMEOUT:-600}"
+
 # 1) Deserialization — criterion adapter. The workload is deterministic and
 #    synthetic (no network), so its variance is low enough to gate: `--err`
-#    fails the job if Bencher's threshold flags a regression.
-echo "== bencher: deserialization (rust_criterion) ==" >&2
-bencher run \
+#    fails the job if Bencher's threshold flags a regression. Criterion's default
+#    measurement is long; bound it (short, still stable for a parse microbench).
+echo "== bencher: deserialization (rust_criterion) — start ==" >&2
+timeout "$BENCHER_TIMEOUT" bencher run \
   --project "$PROJECT" \
   --testbed "$TESTBED" \
   --adapter rust_criterion \
   "${gh_flag[@]}" \
   --err \
-  "cargo bench -p ferric-fred --bench deserialization_criterion"
+  "cargo bench -p ferric-fred --bench deserialization_criterion -- --warm-up-time 1 --measurement-time 5 --sample-size 20"
+echo "== bencher: deserialization — done ==" >&2
 
 # 2) CLI startup — hyperfine adapter. Offline and deterministic, but shared-runner
 #    wall-clock is noisier than a parse microbench, so it is tracked (history +
 #    PR comment) but NOT gated: no `--err` here.
-echo "== bencher: CLI startup (shell_hyperfine) ==" >&2
+echo "== bencher: CLI startup (shell_hyperfine) — start ==" >&2
 cargo build --release -p ferric-fred-cli >&2
 startup_json="$(mktemp)"
-bencher run \
+timeout "$BENCHER_TIMEOUT" bencher run \
   --project "$PROJECT" \
   --testbed "$TESTBED" \
   --adapter shell_hyperfine \
@@ -73,3 +81,4 @@ bencher run \
   --file "$startup_json" \
   "hyperfine --warmup 10 --shell=none --export-json $startup_json 'target/release/fred --version'"
 rm -f "$startup_json"
+echo "== bencher: CLI startup — done ==" >&2

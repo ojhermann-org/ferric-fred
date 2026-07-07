@@ -56,6 +56,10 @@ jobs:
     needs: gate
     if: needs.gate.outputs.configured == 'true'
     runs-on: ubuntu-latest
+    # Backstop: the benches + uploads take a few minutes; anything approaching
+    # this is a hang. Fail the job rather than burn runner minutes idle. The
+    # per-command `timeout` in bench-ci.sh trips first and preserves logs.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
 
