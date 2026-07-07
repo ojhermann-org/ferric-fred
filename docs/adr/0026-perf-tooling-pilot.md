@@ -133,10 +133,18 @@ Same workload, same three sizes, both harnesses agreed on the number
   as we track deserialization in CI (divan has no Bencher adapter). If a divan
   adapter later lands (or we hand-format Bencher Metric Format JSON from divan),
   the criterion mirror could be revisited.
-- One follow-up remains: give the TUI a headless render-and-exit path so
-  `fred chart` startup can be timed by hyperfine without a fragile stdin hack
-  (crossterm reads the tty, not stdin). Bencher CI wiring — previously the other
-  open follow-up — is done as of this ADR.
+- **TUI timing — resolved differently than planned.** hyperfine can't time
+  `fred chart` startup (its event loop blocks on `event::read()` from the tty, and
+  crossterm reads keys from `/dev/tty` not stdin, so there's no exit to time). A
+  `--render-once` flag would still need a real tty (useless in headless CI) and be
+  dominated by the network fetch. Instead we measure the only part that's ours and
+  could regress — the render — with a divan bench (`crates/ferric-fred-cli/benches/
+  render.rs`) that builds chart data and draws a frame into a ratatui `TestBackend`
+  (headless: no tty, no network). This needed a small bin+lib split of the CLI
+  crate so the bench can reach `build_chart_data`/`render_chart` (a binary crate
+  exposes no library API). It confirms the render is sub-millisecond — low-signal,
+  as expected, but the DoD item is now covered honestly. Bencher CI wiring —
+  previously the other open follow-up — is done as of this ADR.
 
 ## Alternatives considered
 

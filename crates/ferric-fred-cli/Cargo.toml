@@ -30,6 +30,17 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 [dev-dependencies]
 assert_cmd = { workspace = true }
 predicates = { workspace = true }
+# Headless TUI render bench (perf pilot — ADR-0026). divan drives it; ratatui's
+# `TestBackend` (already a ratatui feature) is the offline, tty-free backend.
+divan = { workspace = true }
+
+# Headless `fred chart` render microbench — build chart data + draw one frame into
+# a `TestBackend`, no tty, no network. `harness = false` hands `cargo bench` to
+# divan. See ADR-0026 (TUI-startup timing was infeasible via hyperfine; this
+# measures the render work instead). Local-only: divan has no Bencher adapter.
+[[bench]]
+name = "render"
+harness = false
 
 [lints]
 workspace = true

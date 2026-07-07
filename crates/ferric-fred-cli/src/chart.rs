@@ -12,8 +12,9 @@ use ratatui::widgets::{Axis, Block, Chart, Dataset, GraphType};
 use ratatui::{DefaultTerminal, Frame};
 
 /// Observations reduced to a plottable series plus axis bounds, tick labels, and
-/// a one-line stats summary.
-struct ChartData {
+/// a one-line stats summary. Public so the headless render bench
+/// (`benches/render.rs`) can pass it to [`render_chart`]; fields stay private.
+pub struct ChartData {
     points: Vec<(f64, f64)>,
     x_bounds: [f64; 2],
     y_bounds: [f64; 2],
@@ -28,7 +29,7 @@ struct ChartData {
 /// Build plottable data from observations: drop missing values, sort by date,
 /// and compute axis bounds, tick labels, and a stats summary. Returns `None`
 /// when fewer than two points have values (nothing meaningful to plot).
-fn build_chart_data(observations: &[Observation]) -> Option<ChartData> {
+pub fn build_chart_data(observations: &[Observation]) -> Option<ChartData> {
     let mut dated: Vec<(NaiveDate, f64)> = observations
         .iter()
         .filter_map(|observation| observation.value.map(|value| (observation.date, value)))
@@ -89,7 +90,7 @@ fn build_chart_data(observations: &[Observation]) -> Option<ChartData> {
 }
 
 /// Render the chart into a frame.
-fn render_chart(frame: &mut Frame, data: &ChartData, title: &str) {
+pub fn render_chart(frame: &mut Frame, data: &ChartData, title: &str) {
     let dataset = Dataset::default()
         .marker(symbols::Marker::Braille)
         .graph_type(GraphType::Line)

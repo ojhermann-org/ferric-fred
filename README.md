@@ -97,6 +97,9 @@ cargo bench -p ferric-fred --bench deserialization
 # Same workload under criterion (the divan-vs-criterion baseline).
 cargo bench -p ferric-fred --bench deserialization_criterion
 
+# Headless `fred chart` render cost (divan + ratatui TestBackend, no tty).
+cargo bench -p ferric-fred-cli --bench render
+
 # CLI wall-clock timing (hyperfine): startup + a live fetch-and-render.
 # The fetch benchmark needs FRED_API_KEY; startup runs offline.
 scripts/bench-cli.sh                    # add --json DIR to export hyperfine JSON
