@@ -1,7 +1,7 @@
 [package]
 name = "ferric-fred-mcp"
 description = "MCP server exposing FRED (Federal Reserve Economic Data), built on the ferric-fred client."
-version = "0.3.7"
+version = "0.3.8"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -17,7 +17,7 @@ path = "src/main.rs"
 # The library, by workspace path (+ version for publishing), per ADR-0002. Its
 # `schemars` feature is enabled here so the tool return types carry `JsonSchema`
 # and each tool can advertise an output schema (ADR-0023).
-ferric-fred = { path = "../ferric-fred", version = "0.3.5", features = ["schemars"] }
+ferric-fred = { path = "../ferric-fred", version = "0.3.6", features = ["schemars"] }
 anyhow = { workspace = true }
 chrono = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "io-std"] }

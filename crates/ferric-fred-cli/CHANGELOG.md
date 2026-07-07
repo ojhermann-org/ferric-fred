@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.6](https://github.com/ojhermann-org/ferric-fred/compare/ferric-fred-cli-v0.3.5...ferric-fred-cli-v0.3.6) - 2026-07-07
+
+### Other
+
+- *(cli)* headless TUI render bench (+ bin/lib split) — ADR-0026 follow-up ([#52](https://github.com/ojhermann-org/ferric-fred/pull/52))
+
 ## [0.3.5](https://github.com/ojhermann-org/ferric-fred/compare/ferric-fred-cli-v0.3.4...ferric-fred-cli-v0.3.5) - 2026-07-07
 
 ### Added
