@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.6](https://github.com/ojhermann-org/ferric-fred/compare/ferric-fred-v0.3.5...ferric-fred-v0.3.6) - 2026-07-07
+
+### Other
+
+- *(bench)* perf-tooling pilot — divan + hyperfine (ADR-0026, #42) ([#48](https://github.com/ojhermann-org/ferric-fred/pull/48))
+
 ## [0.3.5](https://github.com/ojhermann-org/ferric-fred/compare/ferric-fred-v0.3.4...ferric-fred-v0.3.5) - 2026-07-07
 
 ### Added
