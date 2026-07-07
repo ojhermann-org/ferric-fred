@@ -61,10 +61,12 @@ cargo bench -p ferric-fred --bench deserialization   # divan: observations parse
 scripts/bench-cli.sh                                  # hyperfine: CLI wall-clock
 ```
 
-CI only checks that the benches still compile (`cargo bench --no-run`); it does
-not time them. If you touch `Observation`/`ReleaseTable` deserialization or the
-CLI's startup path, run the relevant bench locally and note the before/after in
-your PR.
+CI checks that the benches compile on every PR (`cargo bench --no-run`), and a
+separate `bench.yml` uploads results to [Bencher](https://bencher.dev) to track
+them and comment regressions on the PR (the criterion mirror + hyperfine startup;
+Bencher has no divan adapter). If you touch `Observation`/`ReleaseTable`
+deserialization or the CLI's startup path, run the relevant bench locally and
+note the before/after in your PR too.
 
 ## Commit messages
 

@@ -102,8 +102,14 @@ cargo bench -p ferric-fred --bench deserialization_criterion
 scripts/bench-cli.sh                    # add --json DIR to export hyperfine JSON
 ```
 
-CI keeps the benches compiling (`cargo bench --no-run`) but does not time them;
-tracking results over time is the deferred bencher.dev step in ADR-0026.
+CI keeps the benches compiling on every PR (`cargo bench --no-run`), and a
+separate `bench.yml` uploads results to [Bencher](https://bencher.dev) (hosted
+project `ferric-fred`) to track them over time and flag regressions on PRs.
+Bencher has no divan adapter, so it ingests the *criterion* mirror
+(`rust_criterion`) and *hyperfine* startup (`shell_hyperfine`); divan stays the
+fast local harness. `BENCHER_API_TOKEN` comes from Infisical, so the upload is a
+no-op until the machine identity is configured — see
+[ADR-0026](docs/adr/0026-perf-tooling-pilot.md).
 
 ## Secrets
 
