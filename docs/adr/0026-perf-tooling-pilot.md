@@ -31,7 +31,12 @@ parked until a suitable testbed exists.
 We will **trial all three tools against the deserialization + CLI-timing
 workload**, and record the following radar verdicts:
 
-- **divan → Adopt (for microbenchmarks).** It is the primary bench harness. Two
+- **divan → adopted as ferric-fred's local microbench harness (org radar ring:
+  Trial).** It is our primary bench harness here. Note the two scopes: *this
+  repo* adopts divan for its benches, while on the org Tech Radar the ring is the
+  more conservative **Trial** — a single pilot promotes Assess→Trial, not straight
+  to Adopt (an org-wide default recommendation). The framings are consistent:
+  Trial-ring tools are precisely those already used in a real project. Two
   suites live in `crates/ferric-fred/benches/deserialization.rs`
   (`observations_latest` and `observations_alfred_vintages`, each across
   1k/10k/100k rows), fed by a deterministic, RNG-free fixture builder
