@@ -597,6 +597,7 @@ dependencies = [
  "assert_cmd",
  "chrono",
  "clap",
+ "divan",
  "ferric-fred",
  "predicates",
  "ratatui",

@@ -6,8 +6,11 @@
 //! errors, and drives the async client with `#[tokio::main]` (ADR-0003).
 
 mod args;
-mod chart;
 mod geofred;
+
+// `chart` lives in this crate's library target (src/lib.rs) so benches/tests can
+// exercise its rendering directly; the binary reaches it via the crate name.
+use ferric_fred_cli::chart;
 
 use anyhow::{Context, Result};
 use chrono::{NaiveDate, NaiveDateTime};
