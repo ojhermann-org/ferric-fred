@@ -47,10 +47,13 @@ fi
 gh_flag=()
 [ -n "${GITHUB_TOKEN:-}" ] && gh_flag=(--github-actions "$GITHUB_TOKEN")
 
-# Every `bencher run` is wrapped in `timeout` so a hang (e.g. a network stall
-# talking to api.bencher.dev) fails the step within minutes and flushes its logs,
-# rather than sitting idle until the job-level timeout. `timeout` returns 124 on
-# expiry, which trips `set -e`.
+# Every `bencher run` is wrapped in `timeout` so a hang fails the step within
+# minutes and flushes its logs, rather than sitting idle (GitHub only flushes a
+# step's logs when it ends). `timeout` returns 124 on expiry, tripping `set -e`.
+# History: the very first upload to a brand-new empty project hung ~40 min while
+# bootstrapping the initial branch + testbed; once those exist (`bencher run`
+# auto-creates them, fast) subsequent runs take ~2 min. The timeout is the guard
+# against any recurrence.
 BENCHER_TIMEOUT="${BENCHER_TIMEOUT:-600}"
 
 # 1) Deserialization — criterion adapter. The workload is deterministic and
