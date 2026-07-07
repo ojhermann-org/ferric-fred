@@ -86,6 +86,25 @@ CI (`ci.yml`) runs that same offline gate on every push and PR; a dormant
 `live.yml` runs the live FRED tests once an Infisical machine identity is
 configured ([ADR-0016](docs/adr/0016-ci-live-tests-machine-identity.md)).
 
+### Benchmarks
+
+Performance tooling from the org Tech Radar pilot
+([ADR-0026](docs/adr/0026-perf-tooling-pilot.md), issue #42):
+
+```sh
+# Deserialization microbenches (divan) — the observations parse hot path.
+cargo bench -p ferric-fred --bench deserialization
+# Same workload under criterion (the divan-vs-criterion baseline).
+cargo bench -p ferric-fred --bench deserialization_criterion
+
+# CLI wall-clock timing (hyperfine): startup + a live fetch-and-render.
+# The fetch benchmark needs FRED_API_KEY; startup runs offline.
+scripts/bench-cli.sh                    # add --json DIR to export hyperfine JSON
+```
+
+CI keeps the benches compiling (`cargo bench --no-run`) but does not time them;
+tracking results over time is the deferred bencher.dev step in ADR-0026.
+
 ## Secrets
 
 The client reads a free **FRED API key** from the `FRED_API_KEY` environment

@@ -45,6 +45,11 @@ predicates = "3"
 # Library HTTP mocking (dev-only): a local mock server for offline endpoint tests
 # (ADR-0011).
 wiremock = "0.6"
+# Benchmarking (dev-only). `divan` is the Tech-Radar Trial subject (ADR-0026 /
+# issue #42); `criterion` sits alongside it purely as the ergonomics baseline for
+# the divan-vs-criterion verdict — same workload, two harnesses, one comparison.
+divan = "0.1"
+criterion = "0.8"
 # Stream combinators (dev-only): `StreamExt` for driving `Paginate::stream` in
 # tests and doc examples (ADR-0021).
 futures-util = { version = "0.3", default-features = false }

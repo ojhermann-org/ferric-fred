@@ -50,6 +50,22 @@ git config core.hooksPath .githooks
 `pre-commit` is a secret guard ([ADR-0014](docs/adr/0014-pre-commit-secret-guard.md));
 `pre-push` runs fmt + clippy + tests.
 
+## Benchmarks
+
+Perf tooling from the Tech Radar pilot ([ADR-0026](docs/adr/0026-perf-tooling-pilot.md)).
+They are not part of the gate — run them when a change might affect the
+deserialization hot path or CLI startup:
+
+```sh
+cargo bench -p ferric-fred --bench deserialization   # divan: observations parse
+scripts/bench-cli.sh                                  # hyperfine: CLI wall-clock
+```
+
+CI only checks that the benches still compile (`cargo bench --no-run`); it does
+not time them. If you touch `Observation`/`ReleaseTable` deserialization or the
+CLI's startup path, run the relevant bench locally and note the before/after in
+your PR.
+
 ## Commit messages
 
 Commits follow [Conventional Commits](https://www.conventionalcommits.org/) —

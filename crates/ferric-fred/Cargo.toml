@@ -46,6 +46,23 @@ wiremock = { workspace = true }
 chrono = { workspace = true, features = ["clock"] }
 # `StreamExt` for driving `Paginate::stream` in tests and doc examples (ADR-0021).
 futures-util = { workspace = true }
+# Perf-tooling pilot (issue #42, ADR-0026). `divan` drives the deserialization
+# microbenches; `criterion` mirrors one of them as the vs-criterion baseline.
+divan = { workspace = true }
+criterion = { workspace = true }
+
+# Deserialization microbenches — the observations/release-table parse hot path
+# (client.rs `from_slice`). `harness = false` hands `cargo bench` to divan's own
+# `main()` instead of libtest.
+[[bench]]
+name = "deserialization"
+harness = false
+
+# The same observations-parse workload under criterion, kept minimal — it exists
+# only to compare ergonomics and output against `divan` for the radar verdict.
+[[bench]]
+name = "deserialization_criterion"
+harness = false
 
 [lints]
 workspace = true
