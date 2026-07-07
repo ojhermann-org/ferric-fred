@@ -45,6 +45,7 @@
             pkgs.bacon # background `cargo check`/clippy/test runner
             pkgs.infisical # CLI: inject secret values (e.g. FRED_API_KEY) via direnv
             pkgs.gitleaks # secret scanner for the pre-commit guard (.githooks/pre-commit)
+            pkgs.hyperfine # CLI wall-clock timing for scripts/bench-cli.sh (perf pilot — issue #42)
           ];
 
           env.RUST_BACKTRACE = "1";

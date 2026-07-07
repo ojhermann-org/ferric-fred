@@ -34,6 +34,7 @@ use them, and [`0000-adr-template.md`](0000-adr-template.md) for the template.
 | [0023](0023-mcp-output-schemas.md) | MCP tool output schemas via a feature-gated `schemars` derive | Accepted |
 | [0024](0024-alfred-point-in-time-observations.md) | ALFRED point-in-time & vintage observations | Accepted |
 | [0025](0025-geofred-maps-api.md) | GeoFRED / Maps API support (regional & geographic data) | Accepted |
+| [0026](0026-perf-tooling-pilot.md) | Perf-tooling pilot — divan, hyperfine, bencher | Accepted |
 
 ## Backlog (proposed, not yet written)
 

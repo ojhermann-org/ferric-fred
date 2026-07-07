@@ -53,5 +53,11 @@ jobs:
       - name: Doctests
         run: nix develop --command bash -c "cargo test --doc"
 
+      # Keep the perf benches (ADR-0026) compiling in the bench/release profile.
+      # We build but don't run them: timed execution + regression tracking is the
+      # bencher.dev follow-up (issue #42), not a per-PR gate.
+      - name: Benchmarks compile
+        run: nix develop --command bash -c "cargo bench -p ferric-fred --no-run"
+
       - name: Dependency policy (licenses, advisories, bans, sources)
         run: nix develop --command bash -c "cargo deny check"

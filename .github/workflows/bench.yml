@@ -1,0 +1,111 @@
+name: Benchmarks (Bencher)
+
+# Uploads the perf benchmarks to Bencher (bencher.dev, project `ferric-fred`,
+# hosted) for regression tracking on `main` and per-PR comparison (perf pilot —
+# issue #42 / ADR-0026).
+#
+# Bencher has no divan adapter, so CI tracks the *criterion* deserialization
+# mirror (`rust_criterion`) and *hyperfine* CLI startup (`shell_hyperfine`);
+# divan stays the fast local harness. See scripts/bench-ci.sh + ADR-0026.
+#
+# The Bencher project API key (`bencher_run_…`) comes from Infisical at
+# dev:/shared via the same ferric-fred-ci machine identity as live.yml /
+# release.yml (ADR-0016/0018) — never a GitHub secret. GitHub Actions holds only
+# the two Infisical bootstrap secrets. scripts/bench-ci.sh normalizes the key to
+# BENCHER_API_KEY (bencher's `--key`; the older `--token`/JWT form is deprecated).
+#
+# DORMANT until configured: the `gate` job checks for the machine identity and,
+# if absent, skips the `bench` job so this workflow is a green no-op (forks, or a
+# repo that hasn't set the token yet).
+
+on:
+  push:
+    branches: [main] # refresh the baseline on the default branch
+  pull_request: # compare each PR against the baseline
+
+concurrency:
+  group: bench-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write # Bencher posts the results comment on the PR
+  checks: write # …and a GitHub Check run (else "Failed to create GitHub Check")
+
+jobs:
+  gate:
+    name: Check for Infisical machine identity
+    runs-on: ubuntu-latest
+    outputs:
+      configured: ${{ steps.check.outputs.configured }}
+    steps:
+      # Secrets can't be referenced in a job-level `if:`, so gate here and expose
+      # the result as an output the bench job depends on.
+      - id: check
+        env:
+          INFISICAL_CLIENT_ID: ${{ secrets.INFISICAL_CLIENT_ID }}
+        run: |
+          if [ -n "${INFISICAL_CLIENT_ID}" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Infisical machine identity not configured (INFISICAL_CLIENT_ID / INFISICAL_CLIENT_SECRET absent) — skipping Bencher upload. See ADR-0026 to activate."
+          fi
+
+  bench:
+    name: Run + upload benchmarks
+    needs: gate
+    if: needs.gate.outputs.configured == 'true'
+    runs-on: ubuntu-latest
+    # Backstop: the benches + uploads take a few minutes; anything approaching
+    # this is a hang. Fail the job rather than burn runner minutes idle. The
+    # per-command `timeout` in bench-ci.sh trips first and preserves logs.
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      # Same flake as local dev and the other workflows (ADR-0008): the Rust
+      # toolchain, hyperfine, and the infisical CLI all come from the dev shell.
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Expose the flake's Rust toolchain on PATH
+        run: nix develop --command bash -c 'dirname "$(command -v cargo)" >> "$GITHUB_PATH"'
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+
+      # The Bencher CLI is not in nixpkgs; the official action installs it and
+      # puts it on PATH (preserved inside `nix develop`).
+      - name: Install Bencher CLI
+        uses: bencherdev/bencher@main
+
+      # Authenticate the machine identity, inject BENCHER_API_TOKEN from
+      # dev:/shared, and hand off to the CI bench script (a real file, so no
+      # inline-quoting apostrophe traps — cf. release.yml). GITHUB_TOKEN passes
+      # through `infisical run` so Bencher can comment on the PR.
+      - name: Run + upload benchmarks
+        env:
+          INFISICAL_CLIENT_ID: ${{ secrets.INFISICAL_CLIENT_ID }}
+          INFISICAL_CLIENT_SECRET: ${{ secrets.INFISICAL_CLIENT_SECRET }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Pins the PR's start point to the base commit (the one env var GitHub
+          # doesn't provide by default). GITHUB_EVENT_NAME / GITHUB_HEAD_REF /
+          # GITHUB_BASE_REF / GITHUB_REF_NAME are already in the job env and drive
+          # the branch selection in bench-ci.sh.
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          INFISICAL_PROJECT_ID="$(jq -r .workspaceId .infisical.json)"
+          export INFISICAL_PROJECT_ID
+          nix develop --command bash -c '
+            set -euo pipefail
+            token="$(infisical login --method=universal-auth \
+              --client-id="$INFISICAL_CLIENT_ID" \
+              --client-secret="$INFISICAL_CLIENT_SECRET" \
+              --plain --silent)"
+            echo "::add-mask::$token"
+            infisical run --token="$token" \
+              --projectId="$INFISICAL_PROJECT_ID" \
+              --env=dev --path=/shared -- \
+              scripts/bench-ci.sh
+          '
