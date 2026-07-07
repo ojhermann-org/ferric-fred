@@ -62,6 +62,36 @@ workload**, and record the following radar verdicts:
   setup, versus standing up and operating an instance for a pilot. In parallel,
   CI still guards every bench with `cargo bench --no-run` so they can't rot.
 
+### Getting Bencher actually working — the pilot's real cost
+
+Wiring the *upload* was a five-layer debug, worth recording so the next consumer
+skips it:
+
+1. **Secret path.** The token has to sit where the `ferric-fred-ci` machine
+   identity can read it (`dev:/shared`), not a per-app folder — the identity's
+   grant is scoped to `/shared` (like `FRED_API_KEY`).
+2. **Credential type.** Bencher deprecated JWT *API tokens* for *API keys*
+   (`bencher_run_…`, passed via `--key`/`BENCHER_API_KEY`). The value under the
+   old `BENCHER_API_TOKEN` name routes to `--token` and fails JWT validation;
+   `bench-ci.sh` normalizes it.
+3. **Cold-start hang.** The first upload to an empty project spent ~40 min
+   bootstrapping the initial branch + testbed; every `bencher run` is now wrapped
+   in `timeout` (plus a job-level `timeout-minutes`) so a hang fails fast with
+   logs instead of idling — GitHub only flushes a step's logs when it ends.
+4. **Gating needs a Threshold.** `--err` is a **no-op without a Threshold** —
+   Bencher never auto-creates one. We set a `percentage` upper boundary of **0.5
+   (50%)** on `main`/`ci-ubuntu`/Latency: deliberately generous because
+   shared-runner wall-clock variance would false-positive a tight gate. It exists
+   to catch *gross* (algorithmic) regressions; tighten it, or move to a
+   statistical model (t-test/IQR) once `main` has enough baseline history, if we
+   ever run on dedicated hardware.
+5. **Branch isolation.** On a PR's detached-HEAD checkout Bencher falls back to
+   the default branch, so PR results *land in* the `main` baseline. Fixed by
+   reporting PRs under `$GITHUB_HEAD_REF` with `main` as the start point
+   (`--start-point-clone-thresholds --start-point-reset`), so a PR is *compared
+   against* the baseline, not merged into it. Thresholds and testbeds live in
+   Bencher (like the project itself), not the repo — inherent to a hosted service.
+
 ### divan vs. criterion — the verdict
 
 Same workload, same three sizes, both harnesses agreed on the number

@@ -89,6 +89,11 @@ jobs:
           INFISICAL_CLIENT_ID: ${{ secrets.INFISICAL_CLIENT_ID }}
           INFISICAL_CLIENT_SECRET: ${{ secrets.INFISICAL_CLIENT_SECRET }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Pins the PR's start point to the base commit (the one env var GitHub
+          # doesn't provide by default). GITHUB_EVENT_NAME / GITHUB_HEAD_REF /
+          # GITHUB_BASE_REF / GITHUB_REF_NAME are already in the job env and drive
+          # the branch selection in bench-ci.sh.
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           INFISICAL_PROJECT_ID="$(jq -r .workspaceId .infisical.json)"
           export INFISICAL_PROJECT_ID

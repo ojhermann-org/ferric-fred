@@ -47,6 +47,26 @@ fi
 gh_flag=()
 [ -n "${GITHUB_TOKEN:-}" ] && gh_flag=(--github-actions "$GITHUB_TOKEN")
 
+# Branch selection. Without this, a PR's detached-HEAD checkout makes bencher fall
+# back to the default branch, so PR results land in — and pollute — the `main`
+# baseline. Instead: on a PR, report under the PR head branch with `main` as its
+# start point, cloning main's thresholds (so the PR is *gated against* the
+# baseline) and resetting to the base each run (so the branch tracks the PR, not
+# accumulated history). On push to main we just report under `main`.
+branch_args=()
+if [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ] && [ -n "${GITHUB_HEAD_REF:-}" ]; then
+  branch_args=(
+    --branch "$GITHUB_HEAD_REF"
+    --start-point "${GITHUB_BASE_REF:-main}"
+    --start-point-clone-thresholds
+    --start-point-reset
+  )
+  # The base commit sha, when the workflow passes it, pins the start point.
+  [ -n "${PR_BASE_SHA:-}" ] && branch_args+=(--start-point-hash "$PR_BASE_SHA")
+else
+  branch_args=(--branch "${GITHUB_REF_NAME:-main}")
+fi
+
 # Every `bencher run` is wrapped in `timeout` so a hang fails the step within
 # minutes and flushes its logs, rather than sitting idle (GitHub only flushes a
 # step's logs when it ends). `timeout` returns 124 on expiry, tripping `set -e`.
@@ -64,6 +84,7 @@ echo "== bencher: deserialization (rust_criterion) — start ==" >&2
 timeout "$BENCHER_TIMEOUT" bencher run \
   --project "$PROJECT" \
   --testbed "$TESTBED" \
+  "${branch_args[@]}" \
   --adapter rust_criterion \
   "${gh_flag[@]}" \
   --err \
@@ -79,6 +100,7 @@ startup_json="$(mktemp)"
 timeout "$BENCHER_TIMEOUT" bencher run \
   --project "$PROJECT" \
   --testbed "$TESTBED" \
+  "${branch_args[@]}" \
   --adapter shell_hyperfine \
   "${gh_flag[@]}" \
   --file "$startup_json" \
