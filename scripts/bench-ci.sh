@@ -26,6 +26,23 @@ if ! command -v bencher >/dev/null 2>&1; then
   exit 1
 fi
 
+# Credential normalization. Bencher deprecated JWT "API tokens"
+# (--token / BENCHER_API_TOKEN) in favour of "API keys"
+# (--key / BENCHER_API_KEY); our Infisical secret holds a project API key
+# (`bencher_run_…`). If it arrived under the older name, remap it to
+# BENCHER_API_KEY and clear the token var — otherwise bencher routes the value to
+# --token and fails JWT validation. Works whether the secret is named
+# BENCHER_API_KEY (preferred) or BENCHER_API_TOKEN.
+if [ -z "${BENCHER_API_KEY:-}" ] && [ -n "${BENCHER_API_TOKEN:-}" ]; then
+  export BENCHER_API_KEY="$BENCHER_API_TOKEN"
+fi
+unset BENCHER_API_TOKEN 2>/dev/null || true
+
+if [ -z "${BENCHER_API_KEY:-}" ]; then
+  echo "BENCHER_API_KEY/BENCHER_API_TOKEN not in env — Infisical injection failed?" >&2
+  exit 1
+fi
+
 # Post a PR comment only when a token is present (absent on forks / some events).
 gh_flag=()
 [ -n "${GITHUB_TOKEN:-}" ] && gh_flag=(--github-actions "$GITHUB_TOKEN")

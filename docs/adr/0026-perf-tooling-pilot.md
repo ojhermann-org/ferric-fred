@@ -53,9 +53,11 @@ workload**, and record the following radar verdicts:
   deserialization via the criterion mirror (`rust_criterion`, gated with `--err`
   since the workload is deterministic) and CLI startup via hyperfine
   (`shell_hyperfine`, tracked but not gated — shared-runner wall-clock is
-  noisier). `BENCHER_API_TOKEN` comes from Infisical at `dev:/shared` via the
-  existing `ferric-fred-ci` machine identity (ADR-0016/0018) — never a GitHub
-  secret — and the workflow is a gated no-op until that identity is configured.
+  noisier). Auth is a Bencher **project API key** (`bencher_run_…`, `--key` —
+  bencher's JWT `--token` form is deprecated), stored in Infisical at
+  `dev:/shared` and injected via the existing `ferric-fred-ci` machine identity
+  (ADR-0016/0018) — never a GitHub secret; the workflow is a gated no-op until
+  that identity is configured.
   Hosted (not self-hosted) was chosen: a token and a project slug are the whole
   setup, versus standing up and operating an instance for a pilot. In parallel,
   CI still guards every bench with `cargo bench --no-run` so they can't rot.

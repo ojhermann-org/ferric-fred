@@ -8,10 +8,11 @@ name: Benchmarks (Bencher)
 # mirror (`rust_criterion`) and *hyperfine* CLI startup (`shell_hyperfine`);
 # divan stays the fast local harness. See scripts/bench-ci.sh + ADR-0026.
 #
-# BENCHER_API_TOKEN comes from Infisical at dev:/shared via the same
-# ferric-fred-ci machine identity as live.yml / release.yml (ADR-0016/0018) —
-# never a GitHub secret. GitHub Actions holds only the two Infisical bootstrap
-# secrets.
+# The Bencher project API key (`bencher_run_…`) comes from Infisical at
+# dev:/shared via the same ferric-fred-ci machine identity as live.yml /
+# release.yml (ADR-0016/0018) — never a GitHub secret. GitHub Actions holds only
+# the two Infisical bootstrap secrets. scripts/bench-ci.sh normalizes the key to
+# BENCHER_API_KEY (bencher's `--key`; the older `--token`/JWT form is deprecated).
 #
 # DORMANT until configured: the `gate` job checks for the machine identity and,
 # if absent, skips the `bench` job so this workflow is a green no-op (forks, or a
