@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "ferric-fred": {
+      "command": "cargo",
+      "args": ["run", "--release", "--quiet", "-p", "ferric-fred-mcp"],
+      "env": {}
+    }
+  }
+}
