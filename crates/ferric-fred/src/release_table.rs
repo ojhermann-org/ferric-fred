@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -8,13 +8,16 @@ use crate::{ReleaseElementId, ReleaseId, SeriesId};
 /// a release uses to present its series (sections and tables, with series rows
 /// nested beneath them).
 ///
-/// FRED returns the top-level `elements` as a JSON object keyed by element id
-/// whose values are the *roots* of the tree, each carrying its subtree inline
-/// via [`children`](ReleaseTableElement::children). We collect those into an
-/// ordered [`roots`](ReleaseTable::roots) vector (each element already carries
-/// its own id). `name` and `element_id` are present only when a subtree was
-/// requested (see [`ReleaseTablesRequest::element`](crate::ReleaseTablesRequest::element));
-/// for a whole-release request they are absent.
+/// FRED returns the top-level `elements` as a JSON object keyed by element id,
+/// each value carrying its subtree inline via
+/// [`children`](ReleaseTableElement::children). The object is *flattened* — for a
+/// subtree request it also keys every descendant, not just the roots — so we keep
+/// only the true roots (those whose parent isn't itself in the object) as the
+/// ordered [`roots`](ReleaseTable::roots) vector, leaving deeper nodes reachable
+/// solely through `children` (see `roots_from_map`). `name` and `element_id`
+/// are present only when a subtree was requested (see
+/// [`ReleaseTablesRequest::element`](crate::ReleaseTablesRequest::element)); for a
+/// whole-release request they are absent.
 // `Eq` is intentionally omitted: `ReleaseTableElement` carries an `f64`
 // observation value (which is only `PartialEq`), so the tree is `PartialEq` only,
 // mirroring [`Observation`](crate::Observation).
@@ -33,9 +36,9 @@ pub struct ReleaseTable {
     /// top-level `release_id` — a string, unlike the numeric one on each
     /// element — is dropped; the caller already knows it.)
     ///
-    /// On the wire FRED names this `elements` (an object keyed by id); we read
-    /// that but re-serialize as a `roots` array, matching this field and the
-    /// flattened shape.
+    /// On the wire FRED names this `elements` (a flattened object keyed by id);
+    /// we read that, keep only the tree's true roots, and re-serialize as a
+    /// `roots` array (see `roots_from_map`).
     #[serde(
         rename(serialize = "roots", deserialize = "elements"),
         deserialize_with = "roots_from_map"
@@ -103,17 +106,35 @@ pub struct ReleaseTableElement {
     pub children: Vec<ReleaseTableElement>,
 }
 
-/// Deserialize FRED's `elements` object (keyed by element id) into an ordered
-/// vector of its values. Ordering is by element id, so the result is
-/// deterministic regardless of the object's key order.
+/// Deserialize FRED's `elements` object (keyed by element id) into the ordered
+/// vector of *root* elements of the returned tree.
+///
+/// FRED flattens the object: for a subtree request (`element_id`) it keys
+/// **every descendant** of the requested element, and each value *also* carries
+/// its own subtree inline via [`children`](ReleaseTableElement::children). Taking
+/// every value as a root would therefore surface each non-root node twice — once
+/// here and once under its parent's `children` — so a consumer walking the tree
+/// double-counts. A value is a true root of the returned tree only when its
+/// `parent_id` is absent from the object's keys (the requested element itself is
+/// not in the object, so its direct children qualify; a whole-release request's
+/// top-level sections carry a null `parent_id` and qualify too). Every other node
+/// stays reachable solely through its parent's `children`. Ordering is by element
+/// id, so the result is deterministic regardless of the object's key order.
 fn roots_from_map<'de, D>(deserializer: D) -> Result<Vec<ReleaseTableElement>, D::Error>
 where
     D: Deserializer<'de>,
 {
-    // Keys are stringified ids; each value already carries its own element_id,
-    // so we keep only the values and sort by that.
+    // Keys are stringified ids; each value already carries its own element_id.
     let map: BTreeMap<String, ReleaseTableElement> = BTreeMap::deserialize(deserializer)?;
-    let mut roots: Vec<ReleaseTableElement> = map.into_values().collect();
+    let ids: HashSet<ReleaseElementId> = map.values().map(|element| element.element_id).collect();
+    let mut roots: Vec<ReleaseTableElement> = map
+        .into_values()
+        .filter(|element| {
+            element
+                .parent_id
+                .is_none_or(|parent| !ids.contains(&parent))
+        })
+        .collect();
     roots.sort_by_key(|element| element.element_id);
     Ok(roots)
 }
@@ -206,6 +227,85 @@ mod tests {
         assert_eq!(leaf.series_id, Some(SeriesId::new("CPIFABSL")));
         assert_eq!(leaf.element_type, "series");
         assert!(leaf.children.is_empty());
+    }
+
+    /// A subtree request: FRED *flattens* `elements`, keying **every descendant**
+    /// of the requested element (here 12886) while *also* nesting each node's
+    /// subtree under its parent's `children`. Only the requested element's direct
+    /// children (12887, 12890) are true roots; 12888/12889 must appear solely
+    /// under 12887, never promoted into `roots`. Regression test for the
+    /// descendant-duplication bug (#55).
+    #[test]
+    fn subtree_request_keeps_only_true_roots_without_duplication() {
+        let body = r#"{
+            "name": "Personal consumption expenditures",
+            "element_id": 12886,
+            "release_id": "53",
+            "elements": {
+                "12887": {
+                    "element_id": 12887, "release_id": 53, "parent_id": 12886,
+                    "series_id": null, "type": "section", "name": "Goods",
+                    "line": null, "level": "1",
+                    "children": [
+                        {
+                            "element_id": 12888, "release_id": 53, "parent_id": 12887,
+                            "series_id": "DDURRL1A225NBEA", "type": "series",
+                            "name": "Durable goods", "line": null, "level": "2",
+                            "children": []
+                        },
+                        {
+                            "element_id": 12889, "release_id": 53, "parent_id": 12887,
+                            "series_id": "DNDGRL1A225NBEA", "type": "series",
+                            "name": "Nondurable goods", "line": null, "level": "2",
+                            "children": []
+                        }
+                    ]
+                },
+                "12888": {
+                    "element_id": 12888, "release_id": 53, "parent_id": 12887,
+                    "series_id": "DDURRL1A225NBEA", "type": "series",
+                    "name": "Durable goods", "line": null, "level": "2", "children": []
+                },
+                "12889": {
+                    "element_id": 12889, "release_id": 53, "parent_id": 12887,
+                    "series_id": "DNDGRL1A225NBEA", "type": "series",
+                    "name": "Nondurable goods", "line": null, "level": "2", "children": []
+                },
+                "12890": {
+                    "element_id": 12890, "release_id": 53, "parent_id": 12886,
+                    "series_id": null, "type": "section", "name": "Services",
+                    "line": null, "level": "1", "children": []
+                }
+            }
+        }"#;
+        let table: ReleaseTable = serde_json::from_str(body).unwrap();
+        assert_eq!(table.element_id, Some(ReleaseElementId::new(12886)));
+
+        // Only the requested element's direct children are roots.
+        let root_ids: Vec<u32> = table.roots.iter().map(|e| e.element_id.get()).collect();
+        assert_eq!(root_ids, vec![12887, 12890]);
+
+        // 12888 / 12889 are reachable only under 12887, not promoted to roots.
+        let goods = &table.roots[0];
+        assert_eq!(goods.element_id, ReleaseElementId::new(12887));
+        let child_ids: Vec<u32> = goods.children.iter().map(|e| e.element_id.get()).collect();
+        assert_eq!(child_ids, vec![12888, 12889]);
+
+        // No element id appears more than once across the whole tree.
+        fn collect(node: &ReleaseTableElement, out: &mut Vec<u32>) {
+            out.push(node.element_id.get());
+            for child in &node.children {
+                collect(child, out);
+            }
+        }
+        let mut all = Vec::new();
+        for root in &table.roots {
+            collect(root, &mut all);
+        }
+        let mut deduped = all.clone();
+        deduped.sort_unstable();
+        deduped.dedup();
+        assert_eq!(all.len(), deduped.len(), "no element should appear twice");
     }
 
     #[test]
