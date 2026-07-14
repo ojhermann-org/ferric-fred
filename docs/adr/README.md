@@ -36,6 +36,7 @@ use them, and [`0000-adr-template.md`](0000-adr-template.md) for the template.
 | [0025](0025-geofred-maps-api.md) | GeoFRED / Maps API support (regional & geographic data) | Accepted |
 | [0026](0026-perf-tooling-pilot.md) | Perf-tooling pilot — divan, hyperfine, bencher | Accepted |
 | [0027](0027-types-in-types-out.md) | Types in, types out — make illegal states unrepresentable | Accepted |
+| [0028](0028-agent-driven-mcp-testing.md) | Agent-driven MCP testing | Accepted |
 
 ## Backlog (proposed, not yet written)
 

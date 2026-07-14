@@ -68,6 +68,26 @@ Bencher has no divan adapter). If you touch `Observation`/`ReleaseTable`
 deserialization or the CLI's startup path, run the relevant bench locally and
 note the before/after in your PR too.
 
+## Agent-driven MCP audit
+
+Beyond the offline tests, the MCP server has an **agent-driven audit**
+([ADR-0028](docs/adr/0028-agent-driven-mcp-testing.md)): a headless Claude agent
+drives the `ferric-fred-mcp` tools against live FRED and reports defects a
+deterministic test misses — confusing tool descriptions, input/output-schema
+gaps, and rough error handling. It needs a live `FRED_API_KEY` and the `claude`
+CLI (both in the dev shell), so it is **not** part of the CI gate.
+
+```sh
+direnv exec . scripts/mcp-agent-audit.sh   # writes target/mcp-audit/findings.md
+```
+
+Run it **on any change to the MCP surface** (tools, descriptions, annotations,
+schemas), alongside the Glama re-score that change already requires; distil the
+findings into issues. The committed `.mcp.json` also registers the server for any
+Claude Code session in the repo, so you can use the FRED tools interactively while
+developing (it holds no secret — the server reads `FRED_API_KEY` from the
+environment).
+
 ## Commit messages
 
 Commits follow [Conventional Commits](https://www.conventionalcommits.org/) —
