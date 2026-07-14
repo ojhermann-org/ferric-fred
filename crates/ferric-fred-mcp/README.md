@@ -67,8 +67,9 @@ A few of the 34 tools:
 | `get_regional_data` | GeoFRED: a region cross-section for a series group on a date |
 | `get_series_group` | GeoFRED: a regional series' group metadata |
 
-The full tool list, with parameters, is in the
-[repository README](https://github.com/ojhermann-org/ferric-fred#using-the-mcp-server).
+Every tool advertises its input **and** output schema over MCP, so a connected
+client can enumerate all 34 tools and their parameters directly — no hard-coded
+list to fall out of date.
 
 ## Documentation & source
 
