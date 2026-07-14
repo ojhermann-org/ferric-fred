@@ -59,7 +59,10 @@ impl<'a> SeriesDataRequest<'a> {
     /// # Errors
     ///
     /// Returns an error if the request fails to send, FRED returns a non-success
-    /// status, or the response body cannot be deserialized.
+    /// status, or the response body cannot be deserialized. An unknown or
+    /// non-regional series id surfaces as a clear [`Error::Api`](crate::Error::Api)
+    /// naming the id — FRED answers that case with a bare HTTP 500, which the
+    /// client rewrites into an actionable message.
     pub async fn send(self) -> Result<RegionalData> {
         self.client.execute_series_data(&self).await
     }
