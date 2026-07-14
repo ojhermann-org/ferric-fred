@@ -35,13 +35,20 @@ use them, and [`0000-adr-template.md`](0000-adr-template.md) for the template.
 | [0024](0024-alfred-point-in-time-observations.md) | ALFRED point-in-time & vintage observations | Accepted |
 | [0025](0025-geofred-maps-api.md) | GeoFRED / Maps API support (regional & geographic data) | Accepted |
 | [0026](0026-perf-tooling-pilot.md) | Perf-tooling pilot — divan, hyperfine, bencher | Accepted |
+| [0027](0027-types-in-types-out.md) | Types in, types out — make illegal states unrepresentable | Accepted |
 
 ## Backlog (proposed, not yet written)
 
 Decisions we intend to record, roughly in the order we expect to need them.
 Order and contents will change as we build.
 
-_Currently empty — the foundational decisions are all recorded. The
-`release/tables` recursive shape, once a backlog example, is now
-[ADR-0017](0017-release-tables-tree.md) (Accepted). New entries land here as they
-surface._
+Typed-invariant candidates licensed by [ADR-0027](0027-types-in-types-out.md)
+(deferred there so each lands as its own reviewed, appropriately-versioned change):
+
+- **Bounded `Limit` / `Offset` newtypes.** Validated numerics honouring FRED's
+  per-endpoint caps (e.g. `limit` 1–1000, `offset >= 0`), so an out-of-range page
+  request is unrepresentable at construction rather than a 400 from FRED. Routes
+  through the currently-underused `Error::InvalidInput`.
+- **A pairing/ordering type for realtime & update windows.** Lift the "both or
+  neither" and `start <= end` checks (today runtime `if`s in the MCP layer) into a
+  single library type at the chokepoint every surface funnels through.
