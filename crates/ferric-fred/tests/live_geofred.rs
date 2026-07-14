@@ -4,7 +4,7 @@
 
 use chrono::NaiveDate;
 use ferric_fred::{
-    Client, Frequency, RegionType, SeasonalAdjustment, SeriesGroupId, SeriesId, ShapeType,
+    Client, Error, Frequency, RegionType, SeasonalAdjustment, SeriesGroupId, SeriesId, ShapeType,
 };
 
 #[tokio::test]
@@ -70,6 +70,35 @@ async fn series_group_metadata() {
     assert!(!group.title.is_empty());
     assert_eq!(group.region_type, "state");
     assert!(group.min_date <= group.max_date);
+}
+
+#[tokio::test]
+#[ignore = "hits the live FRED API; requires FRED_API_KEY"]
+async fn non_regional_series_group_gives_actionable_error() {
+    let client = Client::from_env().expect("FRED_API_KEY set");
+
+    // GNPCA is a valid *macro* series but has no regional data; FRED answers the
+    // GeoFRED endpoint with a bare HTTP 500. We rewrite it into an actionable
+    // message naming the id and pointing at the non-regional cause (#56).
+    let error = client
+        .series_group(&SeriesId::new("GNPCA"))
+        .await
+        .expect_err("a non-regional series should error");
+
+    match error {
+        Error::Api {
+            status, message, ..
+        } => {
+            assert_eq!(status, 500);
+            assert_ne!(message, "Internal Server Error");
+            assert!(
+                message.contains("series_id=GNPCA"),
+                "message was {message:?}"
+            );
+            assert!(message.contains("regional"), "message was {message:?}");
+        }
+        other => panic!("expected Error::Api, got {other:?}"),
+    }
 }
 
 #[tokio::test]

@@ -888,7 +888,10 @@ impl Client {
     /// # Errors
     ///
     /// Returns an error if the request fails to send, FRED returns a non-success
-    /// status, or the response body cannot be deserialized.
+    /// status, or the response body cannot be deserialized. An unknown or
+    /// non-regional `series_group` surfaces as a clear [`Error::Api`] naming the
+    /// id — FRED answers that case with a bare HTTP 500, which the client rewrites
+    /// into an actionable message.
     pub async fn regional_data(
         &self,
         series_group: &SeriesGroupId,
@@ -952,7 +955,10 @@ impl Client {
     /// # Errors
     ///
     /// Returns an error if the request fails to send, FRED returns a non-success
-    /// status, or the response body cannot be deserialized.
+    /// status, or the response body cannot be deserialized. An unknown or
+    /// non-regional `series_id` surfaces as a clear [`Error::Api`] naming the id —
+    /// FRED answers that case with a bare HTTP 500, which the client rewrites into
+    /// an actionable message.
     pub async fn series_group(&self, series_id: &SeriesId) -> Result<SeriesGroup> {
         let response: SeriesGroupResponse = self
             .get_geofred(
@@ -986,13 +992,16 @@ impl Client {
     }
 
     /// GET a GeoFRED / Maps `path` with `params` (the `/geofred` base);
-    /// see [`get_from`](Self::get_from).
+    /// see [`get_from`](Self::get_from). A GeoFRED "bad id" 500 is rewritten into
+    /// an actionable message by [`geofred_error`].
     async fn get_geofred<T: DeserializeOwned>(
         &self,
         path: &str,
         params: &[(&'static str, String)],
     ) -> Result<T> {
-        self.get_from(&self.geofred_base_url, path, params).await
+        self.get_from(&self.geofred_base_url, path, params)
+            .await
+            .map_err(|error| geofred_error(path, params, error))
     }
 
     /// GET `base_url` + `path` with `params` plus `api_key`/`file_type`, then
@@ -1065,6 +1074,46 @@ fn api_error(status: reqwest::StatusCode, retry_after: Option<Duration>, body: &
         status: status.as_u16(),
         code,
         message,
+    }
+}
+
+/// Rewrite FRED's GeoFRED "bad id" `500` into an actionable error.
+///
+/// The GeoFRED (`/geofred`) endpoints answer an **unknown or non-regional**
+/// `series_id` / `series_group` with an HTTP `500` carrying the generic body
+/// `{"error_code":500,"error_message":"Internal Server Error"}` — a 400-shaped
+/// "bad input" wearing a 500. Left verbatim it reads as "the server broke," so a
+/// caller retries or backs off instead of fixing the id (the macro endpoints, by
+/// contrast, return a clear `400 … does not exist`). When the failing request
+/// carried an id parameter, we rewrite that specific case to name the offending
+/// id and point at the likely cause, preserving the status and code. We cannot
+/// fully distinguish it from a genuine server fault, so the message allows for
+/// both. Every other error — a real `4xx` with its own message, a request with no
+/// id (e.g. `shapes/file`), a transport failure, a rate-limit — passes through
+/// untouched.
+fn geofred_error(path: &str, params: &[(&'static str, String)], error: Error) -> Error {
+    let id = params
+        .iter()
+        .find(|(key, _)| *key == "series_id" || *key == "series_group");
+    match (error, id) {
+        (
+            Error::Api {
+                status: 500,
+                code,
+                message,
+            },
+            Some((key, value)),
+        ) if message == "Internal Server Error" => Error::Api {
+            status: 500,
+            code,
+            message: format!(
+                "GeoFRED {path} ({key}={value}) returned HTTP 500 — the id is likely \
+                 invalid or not a regional (GeoFRED/Maps) series; FRED answers that case \
+                 with a 500 rather than a 404. (If the id is definitely a regional series, \
+                 FRED may be having a genuine internal error.)"
+            ),
+        },
+        (other, _) => other,
     }
 }
 
@@ -2404,6 +2453,52 @@ mod tests {
             .expect("series group parses");
         assert_eq!(group.id, SeriesGroupId::new("1223"));
         assert_eq!(group.region_type, "state");
+    }
+
+    #[tokio::test]
+    async fn geofred_bad_series_500_becomes_actionable_error() {
+        // FRED's GeoFRED endpoints answer an unknown or non-regional series with
+        // an HTTP 500 carrying a generic body (verified live) — a 400-shaped
+        // condition wearing a 500. We rewrite it into an actionable message that
+        // names the id, while preserving the 500 status/code (#56).
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/series/group"))
+            .respond_with(
+                ResponseTemplate::new(500).set_body_string(
+                    r#"{"error_code":500,"error_message":"Internal Server Error"}"#,
+                ),
+            )
+            .mount(&server)
+            .await;
+
+        let error = client_for(&server)
+            .series_group(&SeriesId::new("GNPCA"))
+            .await
+            .expect_err("a non-regional series should error");
+        match error {
+            Error::Api {
+                status,
+                code,
+                message,
+            } => {
+                assert_eq!(status, 500);
+                assert_eq!(code, Some(500));
+                assert_ne!(
+                    message, "Internal Server Error",
+                    "the generic message should be rewritten"
+                );
+                assert!(
+                    message.contains("series_id=GNPCA"),
+                    "message was {message:?}"
+                );
+                assert!(
+                    message.contains("regional"),
+                    "message should point at the non-regional cause: {message:?}"
+                );
+            }
+            other => panic!("expected Error::Api, got {other:?}"),
+        }
     }
 
     #[tokio::test]
