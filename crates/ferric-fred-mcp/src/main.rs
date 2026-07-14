@@ -66,7 +66,8 @@ struct GetSeriesParams {
 /// Input parameters for the `search_series` tool.
 #[derive(Debug, Deserialize, JsonSchema)]
 struct SearchSeriesParams {
-    /// Words to search for, e.g. "unemployment rate".
+    /// Words to search for, e.g. "unemployment rate". Must be non-empty.
+    #[schemars(length(min = 1))]
     text: String,
     /// Maximum number of results to return.
     limit: Option<u32>,
@@ -89,9 +90,13 @@ struct GetObservationsParams {
     limit: Option<u32>,
     /// Units transformation to apply.
     units: Option<UnitsArg>,
-    /// Frequency to aggregate observations down to.
+    /// Frequency to aggregate observations down to. FRED can only aggregate to a
+    /// frequency **coarser than** the series' native one (e.g. a monthly series to
+    /// quarterly or annual, never a coarser series to a finer one); asking for a
+    /// finer or invalid frequency returns a FRED 400.
     frequency: Option<FrequencyArg>,
-    /// Aggregation method, used together with `frequency`.
+    /// Aggregation method — how observations are combined when aggregating to
+    /// `frequency`. Requires `frequency`; on its own it is ignored.
     aggregation: Option<AggregationArg>,
     /// Sort order by date.
     sort: Option<SortOrderArg>,
@@ -214,7 +219,10 @@ struct GetReleaseTablesParams {
     /// The FRED release id, e.g. 10 (Consumer Price Index).
     release_id: u32,
     /// Return only the subtree rooted at this element id (omit for the whole
-    /// tree).
+    /// tree). Takes precedence over `release_id`: FRED resolves the element by its
+    /// own id, so if it belongs to a different release you get *that* release's
+    /// subtree and `release_id` is effectively ignored. Pass an element that
+    /// belongs to `release_id`.
     element_id: Option<u32>,
     /// Fold each series row's observation value into the tree (structure-only
     /// otherwise). FRED returns its latest value unless `observation_date` is set.
@@ -243,7 +251,8 @@ struct GetCategoryRelatedTagsParams {
     /// The FRED category id (0 is the root of the category tree).
     category_id: u32,
     /// Seed tag names; returns the tags co-occurring, within the category, with
-    /// *all* of them.
+    /// *all* of them. Must contain at least one tag.
+    #[schemars(length(min = 1))]
     tag_names: Vec<String>,
     /// Restrict the related tags to those matching this text.
     search_text: Option<String>,
@@ -272,7 +281,8 @@ struct GetReleaseRelatedTagsParams {
     /// The FRED release id, e.g. 53 (Gross Domestic Product).
     release_id: u32,
     /// Seed tag names; returns the tags co-occurring, within the release, with
-    /// *all* of them.
+    /// *all* of them. Must contain at least one tag.
+    #[schemars(length(min = 1))]
     tag_names: Vec<String>,
     /// Restrict the related tags to those matching this text.
     search_text: Option<String>,
@@ -285,7 +295,8 @@ struct GetReleaseRelatedTagsParams {
 /// Input parameters for the `get_series_search_tags` tool.
 #[derive(Debug, Deserialize, JsonSchema)]
 struct GetSeriesSearchTagsParams {
-    /// The series search text, e.g. "unemployment rate".
+    /// The series search text, e.g. "unemployment rate". Must be non-empty.
+    #[schemars(length(min = 1))]
     search_text: String,
     /// Restrict to tags matching this text (FRED's `tag_search_text`).
     tag_search_text: Option<String>,
@@ -298,10 +309,12 @@ struct GetSeriesSearchTagsParams {
 /// Input parameters for the `get_series_search_related_tags` tool.
 #[derive(Debug, Deserialize, JsonSchema)]
 struct GetSeriesSearchRelatedTagsParams {
-    /// The series search text, e.g. "unemployment rate".
+    /// The series search text, e.g. "unemployment rate". Must be non-empty.
+    #[schemars(length(min = 1))]
     search_text: String,
     /// Seed tag names; returns the tags co-occurring, among the matching series,
-    /// with *all* of them.
+    /// with *all* of them. Must contain at least one tag.
+    #[schemars(length(min = 1))]
     tag_names: Vec<String>,
     /// Restrict the related tags to those matching this text (FRED's
     /// `tag_search_text`).
@@ -354,7 +367,8 @@ struct GetTagsParams {
 #[derive(Debug, Deserialize, JsonSchema)]
 struct GetTagsSeriesParams {
     /// The tag names; returns the series carrying *all* of them (e.g.
-    /// `["gdp", "quarterly"]`).
+    /// `["gdp", "quarterly"]`). Must contain at least one tag.
+    #[schemars(length(min = 1))]
     tag_names: Vec<String>,
     /// Field to order results by.
     order_by: Option<OrderByArg>,
@@ -367,7 +381,9 @@ struct GetTagsSeriesParams {
 /// Input parameters for the `get_related_tags` tool.
 #[derive(Debug, Deserialize, JsonSchema)]
 struct GetRelatedTagsParams {
-    /// Seed tag names; returns the tags that co-occur with *all* of them.
+    /// Seed tag names; returns the tags that co-occur with *all* of them. Must
+    /// contain at least one tag.
+    #[schemars(length(min = 1))]
     tag_names: Vec<String>,
     /// Restrict the related tags to those matching this text.
     search_text: Option<String>,
@@ -484,6 +500,7 @@ impl FredServer {
         &self,
         Parameters(params): Parameters<SearchSeriesParams>,
     ) -> Result<CallToolResult, ErrorData> {
+        require_text(&params.text, "text")?;
         let mut request = self.client.search(params.text);
         if let Some(limit) = params.limit {
             request = request.limit(limit);
@@ -544,7 +561,18 @@ impl FredServer {
         if let Some(frequency) = params.frequency {
             request = request.frequency(frequency.into());
         }
+        // FRED only applies `aggregation` when a `frequency` is also given; on its
+        // own it is a silent no-op. Reject that here (mirroring the pairing checks
+        // below) rather than returning untransformed values with no warning.
         if let Some(aggregation) = params.aggregation {
+            if params.frequency.is_none() {
+                return Err(ErrorData::invalid_params(
+                    "aggregation requires frequency (FRED only aggregates when a target \
+                     frequency is given)"
+                        .to_string(),
+                    None,
+                ));
+            }
             request = request.aggregation_method(aggregation.into());
         }
         if let Some(sort) = params.sort {
@@ -1068,7 +1096,9 @@ impl FredServer {
                        scope to the subtree rooted at one element id, and optionally fold each \
                        series row's observation value (at observation_date, or FRED's latest) into \
                        the tree via include_observation_values. Returns the tree as structured \
-                       JSON, with each element's children nested under it.",
+                       JSON, with each element's children nested under it. Note: element_id takes \
+                       precedence over release_id — FRED resolves the element by its own id, so an \
+                       element from another release yields that release's subtree.",
         annotations(
             read_only_hint = true,
             destructive_hint = false,
@@ -1264,6 +1294,7 @@ impl FredServer {
         &self,
         Parameters(params): Parameters<GetRelatedTagsParams>,
     ) -> Result<CallToolResult, ErrorData> {
+        require_tags(&params.tag_names, "tag_names")?;
         let mut request = self.client.related_tags(&params.tag_names);
         if let Some(text) = params.search_text {
             request = request.search_text(text);
@@ -1304,6 +1335,7 @@ impl FredServer {
         &self,
         Parameters(params): Parameters<GetTagsSeriesParams>,
     ) -> Result<CallToolResult, ErrorData> {
+        require_tags(&params.tag_names, "tag_names")?;
         let mut request = self.client.tags_series(&params.tag_names);
         if let Some(order_by) = params.order_by {
             request = request.order_by(order_by.into());
@@ -1408,6 +1440,7 @@ impl FredServer {
         &self,
         Parameters(params): Parameters<GetCategoryRelatedTagsParams>,
     ) -> Result<CallToolResult, ErrorData> {
+        require_tags(&params.tag_names, "tag_names")?;
         let mut request = self
             .client
             .category_related_tags(CategoryId::new(params.category_id), &params.tag_names);
@@ -1470,6 +1503,7 @@ impl FredServer {
         &self,
         Parameters(params): Parameters<GetReleaseRelatedTagsParams>,
     ) -> Result<CallToolResult, ErrorData> {
+        require_tags(&params.tag_names, "tag_names")?;
         let mut request = self
             .client
             .release_related_tags(ReleaseId::new(params.release_id), &params.tag_names);
@@ -1502,6 +1536,7 @@ impl FredServer {
         &self,
         Parameters(params): Parameters<GetSeriesSearchTagsParams>,
     ) -> Result<CallToolResult, ErrorData> {
+        require_text(&params.search_text, "search_text")?;
         let mut request = self.client.series_search_tags(params.search_text);
         if let Some(text) = params.tag_search_text {
             request = request.search_text(text);
@@ -1532,6 +1567,8 @@ impl FredServer {
         &self,
         Parameters(params): Parameters<GetSeriesSearchRelatedTagsParams>,
     ) -> Result<CallToolResult, ErrorData> {
+        require_text(&params.search_text, "search_text")?;
+        require_tags(&params.tag_names, "tag_names")?;
         let mut request = self
             .client
             .series_search_related_tags(params.search_text, &params.tag_names);
@@ -1798,6 +1835,30 @@ fn parse_datetime(raw: &str, field: &str) -> Result<NaiveDateTime, ErrorData> {
                 None,
             )
         })
+}
+
+/// Reject an empty required text argument locally, mirroring the pairing checks,
+/// rather than letting it fall through to FRED's terser "Variable … is not set."
+fn require_text(raw: &str, field: &str) -> Result<(), ErrorData> {
+    if raw.trim().is_empty() {
+        return Err(ErrorData::invalid_params(
+            format!("`{field}` must not be empty"),
+            None,
+        ));
+    }
+    Ok(())
+}
+
+/// Reject an empty required `tag_names` array locally, mirroring the pairing
+/// checks, rather than letting it fall through to FRED's terser message.
+fn require_tags(tags: &[String], field: &str) -> Result<(), ErrorData> {
+    if tags.is_empty() {
+        return Err(ErrorData::invalid_params(
+            format!("`{field}` must contain at least one tag"),
+            None,
+        ));
+    }
+    Ok(())
 }
 
 // Route tool calls through the cached router built once in `new()`, rather than
@@ -2247,5 +2308,81 @@ mod tests {
             NaiveDate::from_ymd_opt(2020, 1, 1).unwrap()
         );
         assert!(parse_date("01/2020", "start").is_err());
+    }
+
+    #[test]
+    fn require_text_rejects_empty_and_whitespace() {
+        assert!(require_text("gdp", "text").is_ok());
+        assert!(require_text("", "text").is_err());
+        assert!(require_text("   ", "text").is_err());
+    }
+
+    #[test]
+    fn require_tags_rejects_empty() {
+        assert!(require_tags(&["gdp".to_string()], "tag_names").is_ok());
+        assert!(require_tags(&[], "tag_names").is_err());
+    }
+
+    // The advertised input schemas must carry the non-empty constraints so a
+    // schema-aware client sees them before ever calling the tool (ADR-0027, the
+    // wire boundary). This guards the `#[schemars(length(min = 1))]` attributes.
+    #[test]
+    fn input_schemas_constrain_required_text_and_tags() {
+        let tools = FredServer::tool_router().list_all();
+        let prop = |tool_name: &str, field: &str| -> serde_json::Value {
+            let tool = tools
+                .iter()
+                .find(|t| t.name == tool_name)
+                .unwrap_or_else(|| panic!("tool `{tool_name}` not found"));
+            serde_json::Value::Object((*tool.input_schema).clone())["properties"][field].clone()
+        };
+
+        // Required free-text search fields advertise minLength: 1.
+        for (tool_name, field) in [
+            ("search_series", "text"),
+            ("get_series_search_tags", "search_text"),
+            ("get_series_search_related_tags", "search_text"),
+        ] {
+            assert_eq!(
+                prop(tool_name, field)["minLength"].as_u64(),
+                Some(1),
+                "`{tool_name}.{field}` must advertise minLength: 1"
+            );
+        }
+
+        // Required tag_names arrays advertise minItems: 1.
+        for tool_name in [
+            "get_tags_series",
+            "get_related_tags",
+            "get_category_related_tags",
+            "get_release_related_tags",
+            "get_series_search_related_tags",
+        ] {
+            assert_eq!(
+                prop(tool_name, "tag_names")["minItems"].as_u64(),
+                Some(1),
+                "`{tool_name}.tag_names` must advertise minItems: 1"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn get_observations_rejects_aggregation_without_frequency() {
+        let server = FredServer::new(Client::new("test-key").expect("client builds"));
+        let params: GetObservationsParams = serde_json::from_value(serde_json::json!({
+            "series_id": "GNPCA",
+            "aggregation": "sum"
+        }))
+        .unwrap();
+        // Validation short-circuits before any network call.
+        let error = server
+            .get_observations(Parameters(params))
+            .await
+            .expect_err("aggregation without frequency must be rejected");
+        assert!(
+            error.message.contains("aggregation requires frequency"),
+            "unexpected message: {}",
+            error.message
+        );
     }
 }
