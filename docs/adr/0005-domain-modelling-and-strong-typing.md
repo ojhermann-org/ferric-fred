@@ -4,6 +4,8 @@
 - **Date:** 2026-07-04
 - **Deciders:** Project owner
 
+> **Canonical for the sibling Rust MCP repos** (`rustrolabe`, `time-value`) for closed-vs-open vocabularies — see [ADR-0029](0029-shared-disciplines-across-the-sibling-rust-mcp-repos.md).
+
 ## Context
 
 The whole premise of `ferric-fred` is a *strongly-typed* client: the FRED API
