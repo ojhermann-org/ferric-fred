@@ -4,6 +4,8 @@
 - **Date:** 2026-07-14
 - **Deciders:** Otto Hermann
 
+> **Canonical for the sibling Rust MCP repos** (`rustrolabe`, `time-value`) for closed-vs-open vocabularies and the open-set anti-ceremony boundary — see [ADR-0029](0029-shared-disciplines-across-the-sibling-rust-mcp-repos.md).
+
 ## Context
 
 [ADR-0005](0005-domain-modelling-and-strong-typing.md) committed the library to a

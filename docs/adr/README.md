@@ -37,6 +37,7 @@ use them, and [`0000-adr-template.md`](0000-adr-template.md) for the template.
 | [0026](0026-perf-tooling-pilot.md) | Perf-tooling pilot — divan, hyperfine, bencher | Accepted |
 | [0027](0027-types-in-types-out.md) | Types in, types out — make illegal states unrepresentable | Accepted |
 | [0028](0028-agent-driven-mcp-testing.md) | Agent-driven MCP testing | Accepted |
+| [0029](0029-shared-disciplines-across-the-sibling-rust-mcp-repos.md) | Shared disciplines across the sibling Rust MCP repos | Accepted |
 
 ## Backlog (proposed, not yet written)
 
