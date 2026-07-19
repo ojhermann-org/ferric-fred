@@ -49,7 +49,7 @@ ADRs and is deliberately honest about partials and gaps.
 | # | Shared lesson | Canonical owner | How `ferric-fred` conforms |
 |---|---------------|-----------------|-----------------------------|
 | **L1** | **Types as a first-class design tool** — hold every design to *unrepresentable? at the chokepoint? documents-and-enforces-at-once?* **with the anti-ceremony boundary: genuinely open sets stay strings, and no fallible constructor that removes no real failure mode.** | **`rustrolabe` ADR-0101** | Conforms via **[ADR-0027](0027-types-in-types-out.md)** (and its base, **[ADR-0005](0005-domain-modelling-and-strong-typing.md)**). ferric-fred states the anti-ceremony **boundary** most explicitly of the three — open series ids stay strings, `Frequency::Other`/`SeasonalAdjustment::Other` exist precisely so we don't reject unmodelled values, and id constructors stay **infallible** because a format check removes no mistake a contributor could realistically make. That boundary clause is preserved verbatim in intent here. |
-| **L2** | **Test the class, not the instance; pin every stated assumption** — universals → property tests, finite enums → exhaustive iteration, type invariants → `compile_fail` doctests. | **`rustrolabe` ADR-0107** | **PARTIAL / gap.** ferric-fred's **[ADR-0011](0011-testing-strategy.md)** uses layered *example-based* round-trip tests — unit + offline `wiremock` integration + `#[ignore]`d live tests as the authority — plus the agent-driven audit ([ADR-0028](0028-agent-driven-mcp-testing.md)). It has **no `proptest`, no exhaustive-enum iteration, and no `compile_fail` doctest** machinery. Recorded honestly as a gap, not a conformance (see G2). |
+| **L2** | **Test the class, not the instance; pin every stated assumption** — universals → property tests, finite enums → exhaustive iteration, type invariants → `compile_fail` doctests. | **`rustrolabe` ADR-0107** | **TARGETED conformance** ([ADR-0030](0030-l2-testing-stance-proptest-adopt-or-decline.md), Accepted). ferric-fred's correctness surface is *wire-format fidelity*, owned by **[ADR-0011](0011-testing-strategy.md)**'s layered example-based tests (unit + offline `wiremock` + `#[ignore]`d live authority) plus the agent audit ([ADR-0028](0028-agent-driven-mcp-testing.md)) — so broad `proptest` is **deliberately declined** (few pure-function universals to earn it). The one cheap, high-teeth L2 form *is* adopted: **exhaustive finite-enum round-trips** over the four inbound serde enums (`Frequency`, `SeasonalAdjustment`, `RegionType`, `ShapeType`), where a variant added without its label is otherwise silently swallowed by `Other(String)`. The six outbound query-param enums already meet L2 via an exhaustive `query_code()` match (missing variant = compile error) + existing `query_codes_match_fred()` tests. `compile_fail` doctests: case-by-case, not a sweep. |
 | **L3** | **Typed output layer** — MCP `outputSchema` derived from the real return type via `schemars` (feature-gated), with a conformance test. | **`rustrolabe` ADR-0102** (most rigorous: a real JSON-Schema validator + a negative "corrupt a token → must fail" test) | Conforms via **[ADR-0023](0023-mcp-output-schemas.md)**: `schemars` derive under the *serialize* contract, conformance covered by structured-return tests plus the agent audit ([ADR-0028](0028-agent-driven-mcp-testing.md)). Strong on the **derive**; lighter on the **validator** — no external JSON-Schema spec validator or negative-corruption test yet. A candidate to level up toward the canonical bar. |
 | **L4** | **Closed vs open vocabularies** — `#[non_exhaustive]` always; an `Other(String)` catch-all **only** where a value must survive a serde round-trip; closed sets are curated enums with exhaustive metadata matches. | **`ferric-fred` ADR-0005 / ADR-0027** (this repo owns it — the two-tier *response-bearing vs request-only* articulation is the sharpest of the three) | This repo is **canonical.** [ADR-0005](0005-domain-modelling-and-strong-typing.md) sets the enum-with-`Other`/`#[non_exhaustive]` pattern; [ADR-0027](0027-types-in-types-out.md) draws the open-vs-constrained boundary. Conforming siblings: `rustrolabe` 0046/0103/0105, `time-value` 0034. |
 | **L5** | **Auto-trait profile** — decide `Send`/`Sync` (and friends) deliberately, then **pin it with a compile-time test**. The profile is per-repo; opposite profiles are legitimate. | **`time-value` ADR-0046** | **Conforms** (G1 landed). `crates/ferric-fred/tests/thread_safety.rs` pins the owned public types (`Client`, id newtypes, domain/return types, `#[non_exhaustive]` enums, `Error`) as `Send + Sync + 'static` and the borrowing request builders as `Send + Sync`, using time-value's zero-dependency `fn assert_send_sync<T: Send + Sync>() {}` approach (no `static_assertions`). Green today; it fails to compile if a field ever regresses the profile. Conforming sibling: `rustrolabe` 0011 (the deliberate **inverse**, `Send + !Sync`). |
@@ -79,8 +79,9 @@ recorded so a reader does not "correct" ferric-fred toward a sibling.
 ## Consequences
 
 - This repo now has a single, citable map from each shared discipline to its
-  canonical ADR, plus an honest ledger of where ferric-fred conforms, where it is
-  only partial (L2, L3-validator), and where it has a gap (L2, L5).
+  canonical ADR, plus an honest ledger of where ferric-fred conforms (L2 by a
+  targeted decision, L5 by a compile-time pin), where it is only partial
+  (L3-validator), and where a deliberate divergence is on the record.
 - Because the index references canonical ADRs **by number** rather than copying
   their text, the normative statement of each lesson lives in exactly one place
   and cannot drift across the three repos. The cost is one indirection: a reader
@@ -95,11 +96,13 @@ recorded so a reader does not "correct" ferric-fred toward a sibling.
     auto-trait profile rather than leaving it merely true in practice — matching
     `time-value` ADR-0046's canonical bar. The L5 row above is updated to reflect
     it.
-  - **G2 — make the L2 stance explicit.** Either adopt property / exhaustive-enum
-    / `compile_fail` tests where they are cheap (enum round-trips, wire-format
-    universals), **or** record a short ADR that *deliberately declines* `proptest`
-    with its rationale. Today the decline is only implicit-in-practice; L2 asks for
-    it to be a written decision either way.
+  - **G2 — make the L2 stance explicit. ✅ Done** ([ADR-0030](0030-l2-testing-stance-proptest-adopt-or-decline.md),
+    Accepted). The stance is now a written decision: broad `proptest` deliberately
+    declined (ferric-fred's risk is wire-format fidelity, not pure-function
+    universals), with the one cheap high-teeth L2 form adopted — exhaustive
+    finite-enum round-trips over the four inbound serde enums, guarding against a
+    variant added without its label being silently swallowed by `Other(String)`.
+    The L2 row above is updated from *PARTIAL / gap* to reflect it.
 - A small ongoing cost: when a shared discipline moves in its canonical repo, this
   index is a place that may need a one-line update to stay accurate.
 

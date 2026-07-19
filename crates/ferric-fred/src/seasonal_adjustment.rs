@@ -144,4 +144,49 @@ mod tests {
             "SAAR"
         );
     }
+
+    /// Every named (non-`Other`) [`SeasonalAdjustment`], hand-maintained. The
+    /// crate declines a `strum`/`EnumIter` dependency (ADR-0030), so this list is
+    /// the drift anchor; [`known_list_is_exhaustive`] keeps it complete.
+    const KNOWN: &[SeasonalAdjustment] = &[
+        SeasonalAdjustment::SeasonallyAdjusted,
+        SeasonalAdjustment::NotSeasonallyAdjusted,
+        SeasonalAdjustment::SeasonallyAdjustedAnnualRate,
+    ];
+
+    #[test]
+    fn every_known_variant_round_trips_through_serde() {
+        for variant in KNOWN {
+            let json = serde_json::to_string(variant).unwrap();
+            let back: SeasonalAdjustment = serde_json::from_str(&json).unwrap();
+            assert_eq!(
+                &back, variant,
+                "{variant:?} serialized to {json} but deserialized back to {back:?} — a \
+                 named variant whose label is not wired into `from_label` is silently \
+                 swallowed by `Other`, the exact bug ADR-0030 pins"
+            );
+        }
+    }
+
+    #[test]
+    fn known_list_is_exhaustive() {
+        // Compile-time drift tripwire: adding a variant makes this match
+        // non-exhaustive and the crate stops compiling. The fix is to add the new
+        // variant to `KNOWN` above, which pulls it into the round-trip test.
+        fn account_for_every_variant(seasonal_adjustment: &SeasonalAdjustment) {
+            match seasonal_adjustment {
+                SeasonalAdjustment::SeasonallyAdjusted
+                | SeasonalAdjustment::NotSeasonallyAdjusted
+                | SeasonalAdjustment::SeasonallyAdjustedAnnualRate
+                | SeasonalAdjustment::Other(_) => {}
+            }
+        }
+        account_for_every_variant(&SeasonalAdjustment::SeasonallyAdjusted);
+        assert!(
+            KNOWN
+                .iter()
+                .all(|v| !matches!(v, SeasonalAdjustment::Other(_))),
+            "`KNOWN` must list only named variants, never `Other`"
+        );
+    }
 }
