@@ -113,6 +113,19 @@ fn updates_start_time_requires_end_time() {
 }
 
 #[test]
+fn observations_aggregation_requires_frequency() {
+    // FRED only aggregates when a target --frequency is given, so --aggregation
+    // requires it (clap `requires`); caught at parse time, before any network
+    // call. This matches the MCP server, which rejects the same combination.
+    fred()
+        .args(["observations", "GNPCA", "--aggregation", "sum"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("required arguments"))
+        .stderr(predicate::str::contains("--frequency"));
+}
+
+#[test]
 fn updates_rejects_a_malformed_time() {
     fred()
         .args([
