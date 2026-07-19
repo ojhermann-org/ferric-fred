@@ -108,4 +108,51 @@ mod tests {
         assert_eq!(ShapeType::State.query_code(), "state");
         assert_eq!(ShapeType::Other("necta".to_owned()).query_code(), "necta");
     }
+
+    /// Every named (non-`Other`) [`ShapeType`], hand-maintained. The crate
+    /// declines a `strum`/`EnumIter` dependency (ADR-0030), so this list is the
+    /// drift anchor; [`known_list_is_exhaustive`] keeps it complete.
+    const KNOWN: &[ShapeType] = &[
+        ShapeType::State,
+        ShapeType::County,
+        ShapeType::Msa,
+        ShapeType::Country,
+        ShapeType::Bea,
+    ];
+
+    #[test]
+    fn every_known_variant_round_trips_through_serde() {
+        for variant in KNOWN {
+            let json = serde_json::to_string(variant).unwrap();
+            let back: ShapeType = serde_json::from_str(&json).unwrap();
+            assert_eq!(
+                &back, variant,
+                "{variant:?} serialized to {json} but deserialized back to {back:?} — a \
+                 named variant whose token is not wired into `from_token` is silently \
+                 swallowed by `Other`, the exact bug ADR-0030 pins"
+            );
+        }
+    }
+
+    #[test]
+    fn known_list_is_exhaustive() {
+        // Compile-time drift tripwire: adding a variant makes this match
+        // non-exhaustive and the crate stops compiling. The fix is to add the new
+        // variant to `KNOWN` above, which pulls it into the round-trip test.
+        fn account_for_every_variant(shape_type: &ShapeType) {
+            match shape_type {
+                ShapeType::State
+                | ShapeType::County
+                | ShapeType::Msa
+                | ShapeType::Country
+                | ShapeType::Bea
+                | ShapeType::Other(_) => {}
+            }
+        }
+        account_for_every_variant(&ShapeType::State);
+        assert!(
+            KNOWN.iter().all(|v| !matches!(v, ShapeType::Other(_))),
+            "`KNOWN` must list only named variants, never `Other`"
+        );
+    }
 }

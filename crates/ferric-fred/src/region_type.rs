@@ -121,4 +121,51 @@ mod tests {
         let json = serde_json::to_string(&other).unwrap();
         assert_eq!(serde_json::from_str::<RegionType>(&json).unwrap(), other);
     }
+
+    /// Every named (non-`Other`) [`RegionType`], hand-maintained. The crate
+    /// declines a `strum`/`EnumIter` dependency (ADR-0030), so this list is the
+    /// drift anchor; [`known_list_is_exhaustive`] keeps it complete.
+    const KNOWN: &[RegionType] = &[
+        RegionType::State,
+        RegionType::County,
+        RegionType::Msa,
+        RegionType::Country,
+        RegionType::Bea,
+    ];
+
+    #[test]
+    fn every_known_variant_round_trips_through_serde() {
+        for variant in KNOWN {
+            let json = serde_json::to_string(variant).unwrap();
+            let back: RegionType = serde_json::from_str(&json).unwrap();
+            assert_eq!(
+                &back, variant,
+                "{variant:?} serialized to {json} but deserialized back to {back:?} — a \
+                 named variant whose token is not wired into `from_token` is silently \
+                 swallowed by `Other`, the exact bug ADR-0030 pins"
+            );
+        }
+    }
+
+    #[test]
+    fn known_list_is_exhaustive() {
+        // Compile-time drift tripwire: adding a variant makes this match
+        // non-exhaustive and the crate stops compiling. The fix is to add the new
+        // variant to `KNOWN` above, which pulls it into the round-trip test.
+        fn account_for_every_variant(region_type: &RegionType) {
+            match region_type {
+                RegionType::State
+                | RegionType::County
+                | RegionType::Msa
+                | RegionType::Country
+                | RegionType::Bea
+                | RegionType::Other(_) => {}
+            }
+        }
+        account_for_every_variant(&RegionType::State);
+        assert!(
+            KNOWN.iter().all(|v| !matches!(v, RegionType::Other(_))),
+            "`KNOWN` must list only named variants, never `Other`"
+        );
+    }
 }
