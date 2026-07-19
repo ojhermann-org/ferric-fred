@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.8](https://github.com/ojhermann-org/ferric-fred/compare/ferric-fred-v0.3.7...ferric-fred-v0.3.8) - 2026-07-19
+
+### Fixed
+
+- *(mcp)* clarify aggregation, regional-data size, and release-table date ([#82](https://github.com/ojhermann-org/ferric-fred/pull/82))
+- *(ferric-fred)* strip comma thousands-separators in release-table values ([#81](https://github.com/ojhermann-org/ferric-fred/pull/81))
+
+### Other
+
+- *(ferric-fred)* exhaustive serde round-trips for the 4 inbound enums (ADR-0030) ([#76](https://github.com/ojhermann-org/ferric-fred/pull/76))
+- *(ferric-fred)* pin the public Send/Sync profile with a compile-time test ([#74](https://github.com/ojhermann-org/ferric-fred/pull/74))
+
 ## [0.3.7](https://github.com/ojhermann-org/ferric-fred/compare/ferric-fred-v0.3.6...ferric-fred-v0.3.7) - 2026-07-14
 
 ### Fixed
