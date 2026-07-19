@@ -38,7 +38,7 @@ use them, and [`0000-adr-template.md`](0000-adr-template.md) for the template.
 | [0027](0027-types-in-types-out.md) | Types in, types out — make illegal states unrepresentable | Accepted |
 | [0028](0028-agent-driven-mcp-testing.md) | Agent-driven MCP testing | Accepted |
 | [0029](0029-shared-disciplines-across-the-sibling-rust-mcp-repos.md) | Shared disciplines across the sibling Rust MCP repos | Accepted |
-| [0030](0030-l2-testing-stance-proptest-adopt-or-decline.md) | The L2 testing stance — targeted class-tests, broad `proptest` declined | Proposed |
+| [0030](0030-l2-testing-stance-proptest-adopt-or-decline.md) | The L2 testing stance — targeted class-tests, broad `proptest` declined | Accepted |
 
 ## Backlog (proposed, not yet written)
 

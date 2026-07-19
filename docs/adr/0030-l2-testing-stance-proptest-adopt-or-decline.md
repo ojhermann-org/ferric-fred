@@ -1,9 +1,8 @@
 # ADR-0030: The L2 testing stance — targeted class-tests, broad `proptest` declined
 
-- **Status:** Proposed <!-- Proposed | Accepted | Deprecated | Superseded by ADR-XXXX -->
+- **Status:** Accepted <!-- Proposed | Accepted | Deprecated | Superseded by ADR-XXXX -->
 - **Date:** 2026-07-16
-- **Deciders:** Otto Hermann (owner ratification pending — this ADR recommends a
-  position but is deliberately **not** self-adopted; see the note under Decision)
+- **Deciders:** Otto Hermann (ratified the targeted stance below on 2026-07-19)
 
 ## Context
 
@@ -69,16 +68,26 @@ Concretely:
   This is a considered decline, in the spirit of `time-value`'s own decided-skip
   of its `ALL × ALL` currency test — an L2 form is adopted only where it closes a
   *real* gap, not for symmetry.
-- **Adopt exhaustive finite-enum round-trips** (L2 form 2) for the serde-bearing
-  vocabularies (`Frequency`, `SeasonalAdjustment`, `Units`, `SortOrder`,
-  `SearchType`, `OrderBy`, `RegionType`, `ShapeType`, `UpdatesFilter`,
-  `AggregationMethod`). A variant added without wiring its serde label — a
-  genuinely plausible mistake given the hand-written `serde`/`Display` impls and
-  the `Other(String)` catch-all that would *silently swallow* the omission — is
+- **Adopt exhaustive finite-enum round-trips** (L2 form 2) for the four
+  **inbound, serde-deserialized** vocabularies — `Frequency`,
+  `SeasonalAdjustment`, `RegionType`, `ShapeType`. These are the enums where a
+  variant added without wiring its serde label is *silently swallowed* by the
+  hand-written `Deserialize`'s `Other(String)` catch-all instead of failing — a
+  genuinely plausible mistake given the hand-written `serde`/`Display` impls, and
   exactly the class-level bug L2 targets. Because these enums are
   `#[non_exhaustive]` with no `strum`/`EnumIter` (a dependency the crate declines),
   exhaustiveness is a hand-maintained variant list plus a round-trip assertion,
   mirroring `time-value`'s `Currency::ALL` drift tripwire.
+- **The six outbound query-param enums need nothing further.** `Units`,
+  `SortOrder`, `SearchType`, `OrderBy`, `UpdatesFilter`, and `AggregationMethod`
+  are *outbound-only*: they carry no `serde` derive and no `Other(String)`, and
+  map to FRED via a `query_code()` whose `match` is **exhaustive with no wildcard
+  arm** — so a variant added without wiring its code is a **compile error**, not a
+  silent swallow. Each already carries a `query_codes_match_fred()` test on top of
+  that. The L2 "test every variant" intent is thus *already met* for these, by the
+  type system plus an existing test; adding round-trip tests here would be
+  redundant ceremony, not new teeth. The adopted scope above is deliberately the
+  four inbound enums only.
 - **`compile_fail` doctests (L2 form 3): optional, low priority.** The sealed
   `Paginate`/`Page` traits and the infallible-by-design id constructors are
   already enforced structurally; a `compile_fail` doctest would mostly *document*
@@ -90,12 +99,11 @@ L5 sibling of L2 form 3 — a compile-time lock on a stated invariant — so fer
 is not without class-level tests; this ADR settles the *`proptest`/enum* question
 specifically.
 
-> **Note — why this ADR is `Proposed`, not `Accepted`.** "Adopt vs. decline
-> `proptest`" is an owner-level testing-posture call, so this ADR is drafted to
-> the point of a clear recommendation and then handed to the owner to ratify. On
-> acceptance: set Status to **Accepted**, and if the enum-round-trip adoption is
-> approved, that test lands as its own follow-up PR and ADR-0029's **L2 row** is
-> updated from *PARTIAL / gap* to reflect the targeted-conformance decision.
+> **Ratification note.** "Adopt vs. decline `proptest`" is an owner-level
+> testing-posture call; this ADR was drafted to a clear recommendation and the
+> owner ratified the targeted stance on 2026-07-19. Follow-ups: the exhaustive
+> round-trip test for the four inbound enums lands as its own PR, and ADR-0029's
+> **L2 row** is updated from *PARTIAL / gap* to the targeted-conformance decision.
 
 ## Consequences
 
@@ -105,9 +113,11 @@ specifically.
   mechanism, now with an *explicit rationale* tied to the crate's wire-fidelity
   risk shape — not left looking like a lesson ferric-fred simply hasn't caught up
   to.
-- If the targeted adoption is approved, a small, high-teeth safety net appears
-  around the serde enums: adding a variant without its label becomes a test
-  failure instead of a silent `Other(String)` swallow.
+- A small, high-teeth safety net appears around the four inbound serde enums:
+  adding a variant without its label becomes a test failure instead of a silent
+  `Other(String)` swallow. The six outbound query-param enums are left as-is —
+  their exhaustive `query_code()` match plus existing `query_codes_match_fred()`
+  tests already meet the L2 "every variant" intent, so no new tests are owed there.
 - The decline is **revisitable**: if a future endpoint introduces genuine
   pure-function universals (a non-trivial pagination cursor arithmetic, a
   date-window computation), a scoped `proptest` for *that* can be added under this
