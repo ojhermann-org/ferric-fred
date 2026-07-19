@@ -96,7 +96,8 @@ struct GetObservationsParams {
     /// finer or invalid frequency returns a FRED 400.
     frequency: Option<FrequencyArg>,
     /// Aggregation method — how observations are combined when aggregating to
-    /// `frequency`. Requires `frequency`; on its own it is ignored.
+    /// `frequency`. Requires `frequency`; supplying it without `frequency` is
+    /// rejected (an invalid-params error), not silently ignored.
     aggregation: Option<AggregationArg>,
     /// Sort order by date.
     sort: Option<SortOrderArg>,
@@ -406,7 +407,10 @@ struct GetSeriesTagsParams {
 struct GetRegionalDataParams {
     /// The GeoFRED series-group id, e.g. `882`.
     series_group: String,
-    /// Region granularity to break the data down to.
+    /// Region granularity to break the data down to. FRED returns the full
+    /// cross-section with no limit or paging, so `county` or `msa` returns
+    /// thousands of regions (a `county` cross-section can exceed 250,000
+    /// characters); `state`, `bea`, and `country` are far smaller.
     region_type: RegionTypeArg,
     /// The date to report, `YYYY-MM-DD`.
     date: String,
@@ -1098,7 +1102,10 @@ impl FredServer {
                        the tree via include_observation_values. Returns the tree as structured \
                        JSON, with each element's children nested under it. Note: element_id takes \
                        precedence over release_id — FRED resolves the element by its own id, so an \
-                       element from another release yields that release's subtree.",
+                       element from another release yields that release's subtree. Note: each \
+                       returned row's observation_date is FRED's display label (e.g. \"Jun 2026\"), \
+                       not an ISO YYYY-MM-DD date like the inputs — it is not round-trippable back \
+                       into any date parameter.",
         annotations(
             read_only_hint = true,
             destructive_hint = false,
@@ -1658,7 +1665,11 @@ impl FredServer {
                        in every region (state, county, MSA, country, or BEA region) on a given \
                        date. All arguments are required: series_group id, region_type, date, units \
                        (a free-text measurement label FRED echoes into the title, e.g. Dollars), \
-                       frequency, and season. Returns the values keyed by date.",
+                       frequency, and season. Returns the values keyed by date. Size caveat: \
+                       FRED returns the full cross-section with no limit or paging, so \
+                       region_type county or msa yields thousands of regions (a county \
+                       cross-section can exceed 250,000 characters) — prefer state, bea, or \
+                       country unless you need that granularity.",
         annotations(
             read_only_hint = true,
             destructive_hint = false,

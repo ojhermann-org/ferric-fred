@@ -94,10 +94,12 @@ pub struct ReleaseTableElement {
     pub observation_value: Option<f64>,
 
     /// FRED's formatted label for the [`observation_value`](ReleaseTableElement::observation_value)
-    /// date, e.g. `"Jun 2023"` or `"2023"` — a display string keyed to the
-    /// series' frequency, **not** an ISO date (unlike the request's
-    /// `observation_date`). `None` when values weren't requested or the element
-    /// carries no series.
+    /// date, e.g. `"Jun 2023"` or `"2023"` — a human-readable **display string**
+    /// keyed to the series' frequency, **not** an ISO `YYYY-MM-DD` date (unlike
+    /// every date *input*, including the request's `observation_date`). It is
+    /// therefore **not round-trippable**: it cannot be parsed deterministically
+    /// or fed back into any date parameter. `None` when values weren't requested
+    /// or the element carries no series.
     #[serde(default)]
     pub observation_date: Option<String>,
 

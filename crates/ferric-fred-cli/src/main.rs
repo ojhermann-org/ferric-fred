@@ -334,8 +334,10 @@ struct ObservationOptions {
     /// Aggregate observations down to this frequency.
     #[arg(long)]
     frequency: Option<FrequencyArg>,
-    /// Aggregation method, used together with --frequency.
-    #[arg(long)]
+    /// Aggregation method, used together with --frequency. FRED only aggregates
+    /// when a target --frequency is given, so --aggregation requires it (matching
+    /// the MCP server, which rejects aggregation without frequency).
+    #[arg(long, requires = "frequency")]
     aggregation: Option<AggregationArg>,
     /// Sort order by date.
     #[arg(long)]
