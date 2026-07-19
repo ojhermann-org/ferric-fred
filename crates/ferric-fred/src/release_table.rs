@@ -149,20 +149,26 @@ where
     Ok(raw.filter(|id| !id.is_empty()).map(SeriesId::new))
 }
 
-/// Deserialize a release-table element's `observation_value`: `"."` → `None`,
-/// otherwise parse the string as `f64`. Mirrors [`Observation`](crate::Observation)'s
-/// value handling; paired with `#[serde(default)]`, so an absent field — values
-/// not requested, or a structural element — also yields `None`. A present,
-/// non-`"."` value that fails to parse is an error, not a silent `None`.
+/// Deserialize a release-table element's `observation_value`: `"."` and the
+/// empty string → `None`, otherwise parse the string as `f64`. Unlike the
+/// `observations` endpoint's raw values, `release/tables` returns
+/// **display-formatted** strings in US format — comma thousands-separators with
+/// a `.` decimal point (a GDP aggregate arrives as `"27,000.0"`, not `"27000.0"`) —
+/// so the commas are stripped before parsing; the `.` decimal point is left
+/// intact. Mirrors [`Observation`](crate::Observation)'s value handling; paired
+/// with `#[serde(default)]`, so an absent field — values not requested, or a
+/// structural element — also yields `None`. A present, non-`"."`, non-empty
+/// value that still fails to parse is an error, not a silent `None`.
 fn deserialize_optional_value<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
 where
     D: Deserializer<'de>,
 {
     let raw = String::deserialize(deserializer)?;
-    if raw == "." {
+    if raw == "." || raw.is_empty() {
         return Ok(None);
     }
-    raw.parse::<f64>()
+    raw.replace(',', "")
+        .parse::<f64>()
         .map(Some)
         .map_err(serde::de::Error::custom)
 }
@@ -353,6 +359,48 @@ mod tests {
         let missing = &table_elem.children[1];
         assert_eq!(missing.observation_value, None);
         assert_eq!(missing.observation_date.as_deref(), Some("Jun 2023"));
+    }
+
+    #[test]
+    fn comma_formatted_observation_values_deserialize() {
+        // `release/tables` returns display-formatted values: US formatting with
+        // comma thousands-separators (GDP dollar aggregates like "27,000.0").
+        // Regression test for #77 — these must parse, not blow up the whole tree
+        // with `invalid float literal`. Also pins empty-string → None alongside
+        // the "." sentinel, and that a genuinely non-numeric value still errors.
+        let body = |value: &str| {
+            format!(
+                r#"{{
+                    "release_id": "53",
+                    "elements": {{
+                        "12998": {{
+                            "element_id": 12998, "release_id": 53, "type": "series",
+                            "series_id": "GDP", "name": "Gross domestic product",
+                            "level": "0",
+                            "observation_value": "{value}", "observation_date": "2023",
+                            "children": []
+                        }}
+                    }}
+                }}"#
+            )
+        };
+
+        let parse = |value: &str| -> Result<Option<f64>, _> {
+            serde_json::from_str::<ReleaseTable>(&body(value))
+                .map(|table| table.roots[0].observation_value)
+        };
+
+        // Comma thousands-separator, decimal point preserved.
+        assert_eq!(parse("27,000.0").unwrap(), Some(27000.0));
+        // Multiple commas (millions) round-trip too.
+        assert_eq!(parse("1,234,567.89").unwrap(), Some(1234567.89));
+        // No separator (small value) still parses.
+        assert_eq!(parse("332.568").unwrap(), Some(332.568));
+        // Missing-value sentinels.
+        assert_eq!(parse(".").unwrap(), None);
+        assert_eq!(parse("").unwrap(), None);
+        // A present, non-numeric value is still a hard error, not a silent None.
+        assert!(parse("N/A").is_err());
     }
 
     #[test]

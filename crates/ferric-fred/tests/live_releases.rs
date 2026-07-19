@@ -140,3 +140,37 @@ async fn release_tables_observation_values_surface() {
     let value = value.expect("a series element should carry an observation value");
     assert!(value.is_finite());
 }
+
+#[tokio::test]
+#[ignore = "hits the live FRED API; requires FRED_API_KEY"]
+async fn release_tables_comma_formatted_values_deserialize() {
+    // Regression test for #77: GDP (release 53) dollar aggregates are large
+    // enough that FRED display-formats them with comma thousands-separators
+    // (e.g. "27,000.0"), which the value-folding deserializer must strip before
+    // parsing. Element 12998 is the GDP series row; requesting it with
+    // observation values used to fail the whole tree with `invalid float
+    // literal`. Assert it deserializes and surfaces at least one numeric value.
+    let client = Client::from_env().expect("FRED_API_KEY set");
+
+    let roots = client
+        .release_tables(ReleaseId::new(53))
+        .element(ReleaseElementId::new(12998))
+        .include_observation_values(true)
+        .send()
+        .await
+        .expect("release 53 element 12998 with values should deserialize")
+        .roots;
+
+    fn find_value(elements: &[ferric_fred::ReleaseTableElement]) -> Option<f64> {
+        elements.iter().find_map(|element| {
+            element
+                .observation_value
+                .filter(|value| value.is_finite())
+                .or_else(|| find_value(&element.children))
+        })
+    }
+
+    let value = find_value(&roots)
+        .expect("GDP subtree should carry at least one numeric (comma-formatted) value");
+    assert!(value.is_finite());
+}
