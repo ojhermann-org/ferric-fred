@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.8](https://github.com/ojhermann-org/ferric-fred/compare/ferric-fred-cli-v0.3.7...ferric-fred-cli-v0.3.8) - 2026-07-19
+
+### Fixed
+
+- *(mcp)* clarify aggregation, regional-data size, and release-table date ([#82](https://github.com/ojhermann-org/ferric-fred/pull/82))
+
 ## [0.3.7](https://github.com/ojhermann-org/ferric-fred/compare/ferric-fred-cli-v0.3.6...ferric-fred-cli-v0.3.7) - 2026-07-14
 
 ### Other
