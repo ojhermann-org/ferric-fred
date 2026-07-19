@@ -1665,7 +1665,12 @@ impl FredServer {
                        in every region (state, county, MSA, country, or BEA region) on a given \
                        date. All arguments are required: series_group id, region_type, date, units \
                        (a free-text measurement label FRED echoes into the title, e.g. Dollars), \
-                       frequency, and season. Returns the values keyed by date. Size caveat: \
+                       frequency, and season. The result nests everything under a top-level `meta` \
+                       object (FRED's own envelope, mirrored faithfully): the dated per-region \
+                       values live under `meta.data`, which maps each observation date to a list \
+                       of {region, code, value, series_id}; alongside them sit the display labels \
+                       `meta.title`, `meta.units`, `meta.region`, `meta.seasonality`, and \
+                       `meta.frequency` (see the output schema for the full shape). Size caveat: \
                        FRED returns the full cross-section with no limit or paging, so \
                        region_type county or msa yields thousands of regions (a county \
                        cross-section can exceed 250,000 characters) — prefer state, bea, or \
@@ -1711,7 +1716,12 @@ impl FredServer {
         description = "GeoFRED / Maps: fetch one regional series' values across regions, optionally \
                        over time. Give a regional series_id; with no date, FRED returns the most \
                        recent. Set date for a single date, or start_date for every date from then \
-                       on. Returns the values keyed by date.",
+                       on. The result nests everything under a top-level `meta` object (FRED's own \
+                       envelope, mirrored faithfully): the dated per-region values live under \
+                       `meta.data`, which maps each observation date to a list of {region, code, \
+                       value, series_id}; alongside them sit the display labels `meta.title`, \
+                       `meta.units`, `meta.region`, `meta.seasonality`, and `meta.frequency` (see \
+                       the output schema for the full shape).",
         annotations(
             read_only_hint = true,
             destructive_hint = false,
